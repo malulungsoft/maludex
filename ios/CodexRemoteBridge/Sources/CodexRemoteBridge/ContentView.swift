@@ -1499,6 +1499,415 @@ private struct SavedBridgeRow: View {
     }
 }
 
+struct DemoVideoView: View {
+    @State private var startedAt = Date()
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let elapsed = context.date.timeIntervalSince(startedAt)
+            let totalDuration: TimeInterval = 60
+            let phaseDuration = totalDuration / Double(DemoPhase.allCases.count)
+            let phase = min(DemoPhase.allCases.count - 1, max(0, Int(elapsed / phaseDuration)))
+            let progress = min(1, elapsed / totalDuration)
+
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .center, spacing: 12) {
+                    BrandMark(size: 54)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Brand.name)
+                            .font(.system(size: 36, weight: .black, design: .rounded))
+                            .foregroundStyle(AppPalette.ink)
+                        Text("local-first Codex from iPhone")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.top, 18)
+
+                DemoStage(phase: DemoPhase.allCases[phase])
+
+                Spacer(minLength: 0)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Apache 2.0")
+                        Spacer()
+                        Text("github.com/malulungsoft/maludex")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(AppPalette.line)
+                            Capsule()
+                                .fill(AppPalette.brandGradient)
+                                .frame(width: geometry.size.width * progress)
+                        }
+                    }
+                    .frame(height: 8)
+                }
+                .padding(.bottom, 18)
+            }
+            .padding(.horizontal, 22)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(AppPalette.background)
+        }
+        .onAppear {
+            startedAt = Date()
+        }
+    }
+}
+
+private enum DemoPhase: CaseIterable {
+    case localFirst
+    case pairing
+    case workspace
+    case transcript
+    case approvals
+    case bridges
+}
+
+private struct DemoStage: View {
+    let phase: DemoPhase
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            switch phase {
+            case .localFirst:
+                DemoTitle(
+                    icon: "iphone.gen3",
+                    title: "Remote Codex without a relay",
+                    subtitle: "Your iPhone talks to your Mac. Codex stays local."
+                )
+                DemoBullets([
+                    "No cloud relay in v1",
+                    "Codex app-server stays on stdio",
+                    "Authenticated mobile WebSocket only"
+                ])
+
+            case .pairing:
+                DemoTitle(
+                    icon: "qrcode.viewfinder",
+                    title: "Pair by QR capability token",
+                    subtitle: "Scan once, store the token in Keychain."
+                )
+                DemoPairingCard()
+
+            case .workspace:
+                DemoTitle(
+                    icon: "folder.badge.gearshape",
+                    title: "Pick projects and tune the session",
+                    subtitle: "Workspace, model, intelligence, permissions, and compaction."
+                )
+                DemoWorkspaceCard()
+
+            case .transcript:
+                DemoTitle(
+                    icon: "text.bubble",
+                    title: "Stream the coding turn",
+                    subtitle: "Prompt from iPhone, watch Codex answer live."
+                )
+                DemoTranscriptCard()
+
+            case .approvals:
+                DemoTitle(
+                    icon: "checkmark.shield",
+                    title: "Approve actions on request",
+                    subtitle: "Review commands and file changes before they run."
+                )
+                DemoApprovalCard()
+
+            case .bridges:
+                DemoTitle(
+                    icon: "desktopcomputer",
+                    title: "Switch between local Macs",
+                    subtitle: "Each bridge keeps its own token and session."
+                )
+                DemoBridgeCard()
+            }
+        }
+    }
+}
+
+private struct DemoTitle: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 30, weight: .bold))
+                .foregroundStyle(AppPalette.accent)
+                .frame(width: 54, height: 54)
+                .background(AppPalette.input, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppPalette.line, lineWidth: 1))
+
+            Text(title)
+                .font(.system(size: 28, weight: .black, design: .rounded))
+                .foregroundStyle(AppPalette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(subtitle)
+                .font(.body.weight(.medium))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .panelStyle()
+    }
+}
+
+private struct DemoBullets: View {
+    let bullets: [String]
+
+    init(_ bullets: [String]) {
+        self.bullets = bullets
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(bullets, id: \.self) { bullet in
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(AppPalette.success)
+                    Text(bullet)
+                        .font(.headline)
+                        .foregroundStyle(AppPalette.ink)
+                    Spacer()
+                }
+            }
+        }
+        .panelStyle()
+    }
+}
+
+private struct DemoPairingCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "lock.shield.fill")
+                    .foregroundStyle(AppPalette.success)
+                Text("Bearer auth required")
+                    .font(.headline)
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                DemoKeyValue("Host", "100.x.y.z")
+                DemoKeyValue("Port", "8765")
+                DemoKeyValue("Token", "masked high-entropy secret")
+                DemoKeyValue("Bridge", "Studio Mac")
+            }
+
+            Text("QR payloads are secrets. Do not post screenshots.")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(AppPalette.accentWarm)
+        }
+        .panelStyle()
+    }
+}
+
+private struct DemoWorkspaceCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DemoChipRow(["maludex", "GPT-5.5", "High", "On request"])
+
+            DemoKeyValue("Project", "~/Developer/maludex")
+            DemoKeyValue("Files", "workspace-write")
+            DemoKeyValue("Context", "auto compact on")
+
+            HStack {
+                Label("Start thread", systemImage: "plus.circle.fill")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(AppPalette.accent, in: RoundedRectangle(cornerRadius: 8))
+                Spacer()
+            }
+        }
+        .panelStyle()
+    }
+}
+
+private struct DemoTranscriptCard: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            DemoBubble(role: "You", text: "Add a secure WebSocket bridge and stream events.", isUser: true)
+            DemoBubble(role: "maludex", text: "Implemented authenticated pairing, event replay, and approval forwarding...", isUser: false)
+            DemoChipRow(["image.png", "notes.md", "streaming"])
+        }
+        .panelStyle()
+    }
+}
+
+private struct DemoApprovalCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Approval requested", systemImage: "terminal")
+                    .font(.headline)
+                Spacer()
+                Text("on-request")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppPalette.accent)
+            }
+
+            Text("npm test")
+                .font(.title3.monospaced().weight(.bold))
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AppPalette.input, in: RoundedRectangle(cornerRadius: 8))
+
+            HStack {
+                Text("Deny")
+                    .font(.headline)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 10)
+                    .background(AppPalette.input, in: RoundedRectangle(cornerRadius: 8))
+                Text("Approve")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 10)
+                    .background(AppPalette.success, in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .panelStyle(border: AppPalette.success.opacity(0.35))
+    }
+}
+
+private struct DemoBridgeCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            DemoBridgeRow(name: "Studio Mac", endpoint: "ws://100.x.y.11:8765", active: true)
+            DemoBridgeRow(name: "Desk PC", endpoint: "ws://100.x.y.22:8765", active: false)
+            DemoBridgeRow(name: "Laptop", endpoint: "ws://100.x.y.33:8765", active: false)
+
+            Text("Tokens are stored separately per bridge.")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .panelStyle()
+    }
+}
+
+private struct DemoBridgeRow: View {
+    let name: String
+    let endpoint: String
+    let active: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: active ? "checkmark.circle.fill" : "desktopcomputer")
+                .foregroundStyle(active ? AppPalette.success : AppPalette.accent)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.headline)
+                Text(endpoint)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(10)
+        .background(AppPalette.input, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppPalette.line, lineWidth: 1))
+    }
+}
+
+private struct DemoBubble: View {
+    let role: String
+    let text: String
+    let isUser: Bool
+
+    var body: some View {
+        HStack {
+            if isUser {
+                Spacer(minLength: 30)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(role)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(isUser ? AppPalette.accent : AppPalette.ink)
+                Text(text)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .frame(maxWidth: isUser ? 300 : .infinity, alignment: .leading)
+            .background(isUser ? AppPalette.userBubble : AppPalette.assistantBubble, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppPalette.line, lineWidth: 1))
+            if !isUser {
+                Spacer(minLength: 24)
+            }
+        }
+    }
+}
+
+private struct DemoChipRow: View {
+    let chips: [String]
+
+    init(_ chips: [String]) {
+        self.chips = chips
+    }
+
+    var body: some View {
+        FlowLayout(spacing: 8) {
+            ForEach(chips, id: \.self) { chip in
+                Text(chip)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppPalette.accent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(AppPalette.userBubble, in: Capsule())
+                    .overlay(Capsule().stroke(AppPalette.accent.opacity(0.18), lineWidth: 1))
+            }
+        }
+    }
+}
+
+private struct DemoKeyValue: View {
+    let key: String
+    let value: String
+
+    init(_ key: String, _ value: String) {
+        self.key = key
+        self.value = value
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(key)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 68, alignment: .leading)
+            Text(value)
+                .font(.subheadline.monospaced().weight(.semibold))
+                .foregroundStyle(AppPalette.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private struct FlowLayout<Content: View>: View {
+    let spacing: CGFloat
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        HStack(spacing: spacing) {
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 private extension View {
     func controlLabelStyle(_ title: String, systemImage: String) -> some View {
         HStack(spacing: 8) {

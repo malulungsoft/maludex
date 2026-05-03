@@ -8,6 +8,10 @@ The Mac bridge launches `codex app-server` over stdio JSONL and exposes a narrow
 
 This repository is an MVP. It is useful for private local/Tailscale workflows, but it should not be treated as hardened remote administration software.
 
+## Demo Video
+
+[Watch the 60-second iOS Simulator demo](media/maludex-simulator-demo.mp4).
+
 ## Features
 
 - SwiftUI iPhone client with QR pairing, camera scanner, connection status, project picker, prompt composer, streaming transcript, approval cards, attachment picker, voice input, and local transcript persistence.
@@ -135,6 +139,7 @@ Switching bridges closes the current WebSocket, restores that Mac's saved local 
 - `scripts/setup-local.sh`: local dependency and build setup.
 - `scripts/install-launch-agent.sh`: macOS LaunchAgent installer.
 - `scripts/configure-tailscale-bridge.sh`: private external access setup through Tailscale.
+- `scripts/create-demo-video.sh`: builds the iOS Simulator app and records the GitHub demo video.
 
 ## Development
 
@@ -142,6 +147,12 @@ Switching bridges closes the current WebSocket, restores that Mac's saved local 
 npm install
 npm run build
 npm test
+```
+
+To rebuild the demo video:
+
+```bash
+./scripts/create-demo-video.sh
 ```
 
 Swift model tests can be compiled and run without opening Xcode:

@@ -6,8 +6,12 @@ struct MaludexApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(bridge)
+            if CommandLine.arguments.contains("--demo-video") {
+                DemoVideoView()
+            } else {
+                ContentView()
+                    .environmentObject(bridge)
+            }
         }
     }
 }
