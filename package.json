@@ -1,0 +1,34 @@
+{
+  "name": "maludex-bridge",
+  "version": "0.1.0",
+  "description": "Local-first iPhone remote bridge for Codex.",
+  "license": "Apache-2.0",
+  "private": false,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/malulungsoft/maludex.git"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx bridge/src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.11",
+    "@types/qrcode-terminal": "^0.12.2",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3",
+    "vitest": "^2.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

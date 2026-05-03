@@ -1,0 +1,157 @@
+#!/usr/bin/env node
+import qrcode from "qrcode-terminal";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { homedir, hostname } from "node:os";
+import path from "node:path";
+import { generateCapabilityToken, loadCapabilityTokenFromFile } from "./auth.js";
+import { BridgeServer } from "./bridge-server.js";
+import { createLogger } from "./logger.js";
+
+type CliOptions = {
+  host: string;
+  port: number;
+  codexCommand: string;
+  codexArgs: string[];
+  tokenFile: string;
+  qr: boolean;
+  name: string;
+};
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  ensureTokenFile(options.tokenFile);
+  const token = loadCapabilityTokenFromFile(options.tokenFile);
+  const logger = createLogger();
+  const server = new BridgeServer({
+    host: options.host,
+    port: options.port,
+    tokenFile: options.tokenFile,
+    codexCommand: options.codexCommand,
+    codexArgs: options.codexArgs,
+    logger
+  });
+
+  await server.start();
+  const address = server.address();
+  const pairingUri = pairingUriFor(address.host, address.port, token, options.name);
+
+  process.stdout.write("\nmaludex bridge is listening.\n");
+  process.stdout.write(`WebSocket: ws://${address.host}:${address.port}\n`);
+  process.stdout.write("Auth: scan the QR code with the iPhone app. The raw token is intentionally not printed.\n\n");
+  if (options.qr) {
+    qrcode.generate(pairingUri, { small: true });
+    process.stdout.write("\n");
+  }
+  if (address.host === "127.0.0.1" || address.host === "::1" || address.host === "localhost") {
+    process.stdout.write("Physical iPhones cannot reach Mac localhost; use --host <tailscale-ip> for device testing.\n");
+  }
+
+  const shutdown = async () => {
+    process.stdout.write("\nStopping bridge...\n");
+    await server.stop();
+    process.exit(0);
+  };
+  process.once("SIGINT", () => {
+    void shutdown();
+  });
+  process.once("SIGTERM", () => {
+    void shutdown();
+  });
+}
+
+function parseArgs(args: string[]): CliOptions {
+  const options: CliOptions = {
+    host: process.env.BRIDGE_HOST ?? "127.0.0.1",
+    port: Number(process.env.BRIDGE_PORT ?? 8765),
+    codexCommand: process.env.CODEX_BIN ?? "codex",
+    codexArgs: ["app-server", "--listen", "stdio://"],
+    tokenFile: process.env.BRIDGE_TOKEN_FILE ?? defaultTokenFile(),
+    qr: true,
+    name: process.env.BRIDGE_NAME ?? hostname()
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--host") {
+      options.host = requiredValue(args, ++index, "--host");
+    } else if (arg === "--port") {
+      options.port = Number(requiredValue(args, ++index, "--port"));
+    } else if (arg === "--codex-bin") {
+      options.codexCommand = requiredValue(args, ++index, "--codex-bin");
+    } else if (arg === "--codex-arg") {
+      options.codexArgs.push(requiredValue(args, ++index, "--codex-arg"));
+    } else if (arg === "--token-file") {
+      options.tokenFile = requiredValue(args, ++index, "--token-file");
+    } else if (arg === "--name") {
+      options.name = requiredValue(args, ++index, "--name");
+    } else if (arg === "--no-qr") {
+      options.qr = false;
+    } else if (arg === "--help" || arg === "-h") {
+      printHelp();
+      process.exit(0);
+    } else {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
+  }
+
+  if (!Number.isInteger(options.port) || options.port <= 0 || options.port > 65535) {
+    throw new Error("--port must be an integer between 1 and 65535.");
+  }
+  return options;
+}
+
+function ensureTokenFile(tokenFile: string): void {
+  if (existsSync(tokenFile)) {
+    return;
+  }
+
+  mkdirSync(path.dirname(tokenFile), { recursive: true, mode: 0o700 });
+  writeFileSync(tokenFile, `${generateCapabilityToken()}\n`, { mode: 0o600, flag: "wx" });
+  chmodSync(tokenFile, 0o600);
+}
+
+function defaultTokenFile(): string {
+  return path.join(homedir(), ".codex-iphone-remote-bridge", "token");
+}
+
+function requiredValue(args: string[], index: number, flag: string): string {
+  const value = args[index];
+  if (!value) {
+    throw new Error(`${flag} requires a value.`);
+  }
+  return value;
+}
+
+function pairingUriFor(host: string, port: number, token: string, name: string): string {
+  const query = new URLSearchParams({
+    host,
+    port: String(port),
+    token,
+    tls: "0",
+    name
+  });
+  return `maludex://pair?${query.toString()}`;
+}
+
+function printHelp(): void {
+  process.stdout.write(`maludex bridge
+
+Usage:
+  npm run dev -- [--host 127.0.0.1] [--port 8765]
+
+Options:
+  --host <ip>         Bind to localhost or a specific Tailscale IP. Wildcard binds are refused.
+  --port <port>      WebSocket port. Defaults to 8765.
+  --token-file <p>   0600 file containing the bearer capability token.
+  --name <name>      Friendly bridge name shown on the iPhone. Defaults to hostname.
+  --codex-bin <bin>  Codex executable. Defaults to codex.
+  --codex-arg <arg>  Extra argument appended after: app-server --listen stdio://
+  --no-qr            Do not render the QR pairing code.
+`);
+}
+
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`bridge failed: ${message}\n`);
+  process.exit(1);
+});

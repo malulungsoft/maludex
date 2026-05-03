@@ -1,0 +1,23 @@
+node_modules/
+dist/
+coverage/
+.swiftpm/
+DerivedData/
+build/
+*.xcresult
+.DS_Store
+*.log
+
+# Runtime pairing material must stay local.
+*.token
+pairing*.json
+pairing*.txt
+.env
+.env.*
+!.env.example
+.codex-mobile-attachments/
+iphone-approval-test.txt
+
+# Xcode user state is local machine metadata.
+xcuserdata/
+*.xcuserstate
