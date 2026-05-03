@@ -265,6 +265,7 @@ private struct ProjectScreen: View {
     @State private var settingsPresented = false
     @State private var subagentPresented = false
     @State private var bridgeSwitcherPresented = false
+    @State private var controlsExpanded = false
     @StateObject private var speech = SpeechInputController()
 
     private let maxAttachments = 5
@@ -272,20 +273,23 @@ private struct ProjectScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            ProjectFloatingHeader(
+                isExpanded: $controlsExpanded,
+                showChats: { chatListPresented = true },
+                showNewProject: { newProjectPresented = true },
+                showSettings: { settingsPresented = true },
+                showSubagent: { subagentPresented = true },
+                showBridges: { bridgeSwitcherPresented = true }
+            )
+
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        ProjectHeader(
-                            showChats: { chatListPresented = true },
-                            showNewProject: { newProjectPresented = true },
-                            showSettings: { settingsPresented = true },
-                            showSubagent: { subagentPresented = true },
-                            showBridges: { bridgeSwitcherPresented = true }
-                        )
-
                         TranscriptView(entries: bridge.transcript)
                     }
-                    .padding()
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 16)
                 }
                 .onChange(of: bridge.transcript.count) { _, _ in
                     if let last = bridge.transcript.last {
@@ -441,8 +445,9 @@ private struct ProjectScreen: View {
     }
 }
 
-private struct ProjectHeader: View {
+private struct ProjectFloatingHeader: View {
     @EnvironmentObject private var bridge: BridgeClient
+    @Binding var isExpanded: Bool
     let showChats: () -> Void
     let showNewProject: () -> Void
     let showSettings: () -> Void
@@ -450,10 +455,112 @@ private struct ProjectHeader: View {
     let showBridges: () -> Void
 
     var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                ProjectIdentity()
+                    .layoutPriority(1)
+
+                Spacer(minLength: 4)
+
+                ProjectHeaderIconButton(
+                    title: "Chats",
+                    systemImage: "bubble.left.and.text.bubble.right",
+                    action: showChats
+                )
+
+                ProjectHeaderIconButton(
+                    title: isExpanded ? "Hide controls" : "Show controls",
+                    systemImage: isExpanded ? "chevron.up" : "slider.horizontal.3"
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isExpanded.toggle()
+                    }
+                }
+
+                ProjectHeaderIconButton(
+                    title: "Session",
+                    systemImage: "gearshape",
+                    action: showSettings
+                )
+            }
+            .padding(10)
+            .background(AppPalette.panel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(AppPalette.line, lineWidth: 1)
+            )
+            .shadow(color: AppPalette.panelShadow, radius: 14, x: 0, y: 8)
+
+            if isExpanded {
+                ProjectControlPanel(
+                    showNewProject: showNewProject,
+                    showSettings: showSettings,
+                    showSubagent: showSubagent,
+                    showBridges: showBridges
+                )
+                .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
+        .padding(.bottom, isExpanded ? 10 : 8)
+        .background(AppPalette.background.opacity(0.96))
+    }
+}
+
+private struct ProjectIdentity: View {
+    @EnvironmentObject private var bridge: BridgeClient
+
+    var body: some View {
+        HStack(spacing: 10) {
+            BrandMark(size: 34)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(Brand.name)
+                    .font(.title3.weight(.heavy))
+                    .foregroundStyle(AppPalette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                    .allowsTightening(true)
+
+                Text(bridge.activeBridgeLabel)
+                    .font(.caption.monospaced().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct ProjectHeaderIconButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .labelStyle(.iconOnly)
+                .font(.headline.weight(.semibold))
+                .frame(width: 42, height: 42)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel(title)
+    }
+}
+
+private struct ProjectControlPanel: View {
+    @EnvironmentObject private var bridge: BridgeClient
+    let showNewProject: () -> Void
+    let showSettings: () -> Void
+    let showSubagent: () -> Void
+    let showBridges: () -> Void
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 12) {
-                BrandLockup(compact: true)
-                Spacer()
+            HStack(spacing: 10) {
                 Button {
                     showBridges()
                 } label: {
@@ -491,6 +598,7 @@ private struct ProjectHeader: View {
                 .buttonStyle(.bordered)
                 .accessibilityLabel("Disconnect")
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text("Active bridge")
@@ -512,25 +620,6 @@ private struct ProjectHeader: View {
             }
 
             VStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    Button {
-                        showChats()
-                    } label: {
-                        Label("Chats", systemImage: "bubble.left.and.text.bubble.right")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button {
-                        bridge.refreshChats()
-                    } label: {
-                        Label("Refresh chats", systemImage: "arrow.clockwise")
-                            .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("Refresh chats")
-                }
-
                 HStack(spacing: 10) {
                     Picker("Project", selection: $bridge.selectedProjectPath) {
                         if bridge.projects.isEmpty {
@@ -1228,8 +1317,11 @@ private struct PromptComposer: View {
                     isFocused = false
                 } label: {
                     Label("Send", systemImage: "paperplane.fill")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 56, height: 44)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel("Send")
                 .disabled(!bridge.canSendPrompt || (prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty))
             }
             .controlSize(.large)
@@ -1376,12 +1468,18 @@ private struct BrandLockup: View {
                 Text(Brand.name)
                     .font(compact ? .title3.weight(.heavy) : .largeTitle.weight(.heavy))
                     .foregroundStyle(AppPalette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(compact ? 0.72 : 0.82)
+                    .allowsTightening(true)
                 Text(Brand.studio)
                     .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
                     .foregroundStyle(AppPalette.accent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
             }
             Spacer(minLength: 0)
         }
+        .layoutPriority(1)
         .accessibilityElement(children: .combine)
     }
 }
