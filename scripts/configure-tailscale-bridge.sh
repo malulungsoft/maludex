@@ -88,16 +88,26 @@ if [ ! -f "$PLIST" ]; then
   exit 1
 fi
 
-HOST_FLAG="$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments:4" "$PLIST" 2>/dev/null || true)"
-PORT_FLAG="$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments:6" "$PLIST" 2>/dev/null || true)"
-if [ "$HOST_FLAG" != "--host" ] || [ "$PORT_FLAG" != "--port" ]; then
-  echo "LaunchAgent ProgramArguments did not match the expected bridge shape."
-  echo "Expected --host at index 4 and --port at index 6 in $PLIST"
+HOST_INDEX=""
+PORT_INDEX=""
+ARG_COUNT="$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments" "$PLIST" 2>/dev/null | grep -c '^    ' || true)"
+for ((index = 0; index < ARG_COUNT; index++)); do
+  arg="$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments:$index" "$PLIST" 2>/dev/null || true)"
+  if [ "$arg" = "--host" ]; then
+    HOST_INDEX="$index"
+  elif [ "$arg" = "--port" ]; then
+    PORT_INDEX="$index"
+  fi
+done
+
+if [ -z "$HOST_INDEX" ] || [ -z "$PORT_INDEX" ]; then
+  echo "LaunchAgent ProgramArguments did not include --host and --port."
+  echo "Install the LaunchAgent again with ./scripts/install-launch-agent.sh."
   exit 1
 fi
 
-/usr/libexec/PlistBuddy -c "Set :ProgramArguments:5 $TAILSCALE_IP" "$PLIST"
-/usr/libexec/PlistBuddy -c "Set :ProgramArguments:7 $PORT" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :ProgramArguments:$((HOST_INDEX + 1)) $TAILSCALE_IP" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :ProgramArguments:$((PORT_INDEX + 1)) $PORT" "$PLIST"
 
 if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
   launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true

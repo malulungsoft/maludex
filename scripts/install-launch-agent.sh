@@ -10,9 +10,15 @@ TOKEN_FILE="${BRIDGE_TOKEN_FILE:-$HOME/.codex-iphone-remote-bridge/token}"
 HOST="${BRIDGE_HOST:-127.0.0.1}"
 PORT="${BRIDGE_PORT:-8765}"
 NPM_BIN="$(command -v npm || true)"
+NODE_BIN="$(command -v node || true)"
 
 if [ -z "$NPM_BIN" ]; then
   echo "npm was not found. Install Node.js 20 or newer first."
+  exit 1
+fi
+
+if [ -z "$NODE_BIN" ]; then
+  echo "node was not found. Install Node.js 20 or newer first."
   exit 1
 fi
 
@@ -49,10 +55,8 @@ cat > "$PLIST" <<PLIST
   <string>$ROOT_DIR</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$NPM_BIN</string>
-    <string>run</string>
-    <string>dev</string>
-    <string>--</string>
+    <string>$NODE_BIN</string>
+    <string>$ROOT_DIR/dist/bridge/src/index.js</string>
     <string>--host</string>
     <string>$HOST</string>
     <string>--port</string>
