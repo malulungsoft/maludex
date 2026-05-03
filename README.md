@@ -10,7 +10,9 @@ This repository is an MVP. It is useful for private local/Tailscale workflows, b
 
 ## Demo Video
 
-[Watch the 60-second iOS Simulator demo](media/maludex-simulator-demo.mp4).
+![60-second iOS Simulator demo](media/maludex-simulator-demo.gif)
+
+[Watch the MP4 version](media/maludex-simulator-demo.mp4).
 
 ## Features
 
