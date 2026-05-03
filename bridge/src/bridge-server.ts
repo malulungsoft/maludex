@@ -344,17 +344,21 @@ export class BridgeServer {
   private async stopTurn(ws: WebSocket, message: Extract<MobileMessage, { type: "turn.stop" }>): Promise<void> {
     const threadId = message.threadId ?? firstMapKey(this.activeTurns);
     if (!threadId) {
-      throw new Error("turn.stop requires threadId when no active turn exists.");
+      this.logger.info("mobile.turn_stop_noop", { id: message.id, reason: "missing_thread" });
+      this.sendOk(ws, message.id, { stopped: false, reason: "no_active_turn" });
+      return;
     }
     const turnId = message.turnId ?? this.activeTurns.get(threadId);
     if (!turnId) {
-      throw new Error(`No active turn is tracked for thread ${threadId}.`);
+      this.logger.info("mobile.turn_stop_noop", { id: message.id, threadId, reason: "no_active_turn" });
+      this.sendOk(ws, message.id, { stopped: false, reason: "no_active_turn" });
+      return;
     }
 
     this.logger.info("mobile.turn_stop", { id: message.id, threadId, turnId });
     const result = await this.codex.request("turn/interrupt", { threadId, turnId });
     this.activeTurns.delete(threadId);
-    this.sendOk(ws, message.id, result);
+    this.sendOk(ws, message.id, { stopped: true, result });
   }
 
   private async compactThread(ws: WebSocket, message: Extract<MobileMessage, { type: "thread.compact" }>): Promise<void> {

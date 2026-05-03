@@ -862,6 +862,45 @@ test("persists iPhone-authored prompts into reopened desktop chat history", asyn
   await rm(temp, { recursive: true, force: true });
 });
 
+test("acknowledges turn.stop as a no-op when no active turn is tracked", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: { MOCK_CODEX_RECENT_CWD: temp },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const ws = await connect(`ws://${address.host}:${address.port}`, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(JSON.stringify({ id: "mobile-open-idle", type: "chat.open", threadId: "recent-thread-1" }));
+  await waitForMessage(ws, (message) => message.id === "mobile-open-idle" && message.ok === true);
+
+  ws.send(JSON.stringify({ id: "mobile-stop-idle", type: "turn.stop", threadId: "recent-thread-1" }));
+  const stopped = await waitForMessage<Record<string, unknown>>(ws, (message) => message.id === "mobile-stop-idle");
+  expect(stopped).toMatchObject({
+    type: "response",
+    ok: true,
+    result: {
+      stopped: false,
+      reason: "no_active_turn"
+    }
+  });
+
+  ws.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
 test("returns image and file attachments in reopened chat transcript", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
   const imagePath = path.join(temp, "photo.png");

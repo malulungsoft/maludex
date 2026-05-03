@@ -83,6 +83,22 @@ struct ClientModelsTests {
         let legacyPairing = try! Pairing(uri: "codex-remote://pair?host=100.64.1.2&port=8765&token=\(token)&tls=0")
         require(legacyPairing.token == token, "legacy pairing URI should remain supported")
 
+        let koreanLocale = preferredSpeechLocaleIdentifier(
+            preferredLanguages: ["ko-KR", "en-US"],
+            availableLocaleIdentifiers: Set(["en-US", "ko-KR"])
+        )
+        require(koreanLocale == "ko-KR", "speech input should prefer Korean recognition when available")
+        let koreanFallbackLocale = preferredSpeechLocaleIdentifier(
+            preferredLanguages: ["ko"],
+            availableLocaleIdentifiers: Set(["en-US", "ko-KR"])
+        )
+        require(koreanFallbackLocale == "ko-KR", "speech input should map Korean language preference to ko-KR")
+        let koreanOverrideLocale = preferredSpeechLocaleIdentifier(
+            preferredLanguages: ["en-US"],
+            availableLocaleIdentifiers: Set(["en-US", "ko-KR"])
+        )
+        require(koreanOverrideLocale == "ko-KR", "speech input should use Korean by default even when the device language is English")
+
         let preferences = MemoryPreferencesStore()
         let secrets = MemorySecretStore()
         let deviceStore = DeviceStateStore(preferences: preferences, secretStore: secrets)

@@ -12,10 +12,17 @@ final class SpeechInputController: NSObject, ObservableObject {
     @Published private(set) var statusText: String?
 
     private let audioEngine = AVAudioEngine()
-    private let recognizer = SFSpeechRecognizer()
+    private let recognizer: SFSpeechRecognizer?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var seed = ""
+
+    override init() {
+        let availableLocales = Set(SFSpeechRecognizer.supportedLocales().map(\.identifier))
+        let localeIdentifier = preferredSpeechLocaleIdentifier(availableLocaleIdentifiers: availableLocales)
+        self.recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeIdentifier))
+        super.init()
+    }
 
     func start(seed: String) {
         guard !isListening else { return }
@@ -69,6 +76,9 @@ final class SpeechInputController: NSObject, ObservableObject {
     private func startRecognition() throws {
         recognitionTask?.cancel()
         recognitionTask = nil
+        guard let recognizer, recognizer.isAvailable else {
+            throw SpeechInputError.recognizerUnavailable
+        }
 
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.record, mode: .measurement, options: [.duckOthers])
@@ -89,7 +99,7 @@ final class SpeechInputController: NSObject, ObservableObject {
         try audioEngine.start()
         isListening = true
 
-        recognitionTask = recognizer?.recognitionTask(with: request) { [weak self] result, error in
+        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor in
                 guard let self else { return }
                 if let result {
@@ -106,6 +116,17 @@ final class SpeechInputController: NSObject, ObservableObject {
                     self.stop()
                 }
             }
+        }
+    }
+}
+
+private enum SpeechInputError: LocalizedError {
+    case recognizerUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .recognizerUnavailable:
+            return "Korean speech recognition is not available on this device."
         }
     }
 }

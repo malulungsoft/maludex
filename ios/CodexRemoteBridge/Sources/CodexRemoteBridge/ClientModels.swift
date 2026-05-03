@@ -221,6 +221,42 @@ enum SubagentRoleOption: String, CaseIterable, Identifiable {
     }
 }
 
+func preferredSpeechLocaleIdentifier(
+    preferredLanguages: [String] = Locale.preferredLanguages,
+    availableLocaleIdentifiers: Set<String>
+) -> String {
+    if availableLocaleIdentifiers.contains("ko-KR") {
+        return "ko-KR"
+    }
+
+    for language in preferredLanguages {
+        let normalized = normalizedLocaleIdentifier(language)
+        if availableLocaleIdentifiers.contains(normalized) {
+            return normalized
+        }
+
+        let languageCode = normalized.split(separator: "-").first.map(String.init) ?? normalized
+        if languageCode == "ko", availableLocaleIdentifiers.contains("ko-KR") {
+            return "ko-KR"
+        }
+        if let match = availableLocaleIdentifiers.sorted().first(where: { $0 == languageCode || $0.hasPrefix("\(languageCode)-") }) {
+            return match
+        }
+    }
+
+    if availableLocaleIdentifiers.contains("ko-KR") {
+        return "ko-KR"
+    }
+    if availableLocaleIdentifiers.contains("en-US") {
+        return "en-US"
+    }
+    return availableLocaleIdentifiers.sorted().first ?? "en-US"
+}
+
+private func normalizedLocaleIdentifier(_ value: String) -> String {
+    value.replacingOccurrences(of: "_", with: "-")
+}
+
 struct ChatThreadOption: Identifiable, Equatable {
     let id: String
     let title: String
