@@ -288,6 +288,7 @@ private struct ProjectScreen: View {
     @State private var bridgeSwitcherPresented = false
     @State private var controlsExpanded = false
     @StateObject private var speech = SpeechInputController()
+    @FocusState private var promptFocused: Bool
 
     private let maxAttachments = 5
     private let maxAttachmentBytes = 15 * 1024 * 1024
@@ -311,7 +312,14 @@ private struct ProjectScreen: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
                     .padding(.bottom, 16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        promptFocused = false
+                    }
+                )
                 .onChange(of: bridge.transcript.count) { _, _ in
                     if let last = bridge.transcript.last {
                         withAnimation(.easeOut(duration: 0.2)) {
@@ -333,6 +341,7 @@ private struct ProjectScreen: View {
 
                 PromptComposer(
                     prompt: $prompt,
+                    promptFocused: $promptFocused,
                     attachments: $attachments,
                     photoItems: $photoItems,
                     fileImporterPresented: $fileImporterPresented,
@@ -1258,13 +1267,13 @@ private struct ApprovalCard: View {
 private struct PromptComposer: View {
     @EnvironmentObject private var bridge: BridgeClient
     @Binding var prompt: String
+    let promptFocused: FocusState<Bool>.Binding
     @Binding var attachments: [MobileAttachment]
     @Binding var photoItems: [PhotosPickerItem]
     @Binding var fileImporterPresented: Bool
     @ObservedObject var voiceState: SpeechInputController
     let toggleVoice: () -> Void
     let send: () -> Void
-    @FocusState private var isFocused: Bool
 
     var body: some View {
         VStack(spacing: 10) {
@@ -1279,7 +1288,7 @@ private struct PromptComposer: View {
                 }
 
                 TextEditor(text: $prompt)
-                    .focused($isFocused)
+                    .focused(promptFocused)
                     .scrollContentBackground(.hidden)
                     .padding(8)
             }
@@ -1287,7 +1296,7 @@ private struct PromptComposer: View {
             .background(AppPalette.input, in: RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isFocused ? AppPalette.accent.opacity(0.45) : AppPalette.line, lineWidth: 1)
+                    .stroke(promptFocused.wrappedValue ? AppPalette.accent.opacity(0.45) : AppPalette.line, lineWidth: 1)
             )
 
             AttachmentStrip(attachments: $attachments)
@@ -1335,7 +1344,7 @@ private struct PromptComposer: View {
 
                 Button {
                     send()
-                    isFocused = false
+                    promptFocused.wrappedValue = false
                 } label: {
                     Label("Send", systemImage: "paperplane.fill")
                         .labelStyle(.iconOnly)
