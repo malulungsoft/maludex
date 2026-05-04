@@ -5,6 +5,7 @@ import { chmodSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import path from "node:path";
 import { rotateCapabilityTokenFile } from "./auth.js";
+import { pairingUriFor } from "./pairing-uri.js";
 
 type RotateOptions = {
   host: string;
@@ -18,7 +19,13 @@ type RotateOptions = {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const token = await rotateCapabilityTokenFile(options.tokenFile);
-  const pairingUri = pairingUriFor(options.host, options.port, token, options.name, options.tls);
+  const pairingUri = pairingUriFor({
+    host: options.host,
+    port: options.port,
+    token,
+    name: options.name,
+    tls: options.tls
+  });
 
   process.stdout.write("maludex pairing token rotated.\n");
   process.stdout.write(`Token file: ${options.tokenFile}\n`);
@@ -86,17 +93,6 @@ function requiredValue(args: string[], index: number, flag: string): string {
     throw new Error(`${flag} requires a value.`);
   }
   return value;
-}
-
-function pairingUriFor(host: string, port: number, token: string, name: string, tls: boolean): string {
-  const query = new URLSearchParams({
-    host,
-    port: String(port),
-    token,
-    tls: tls ? "1" : "0",
-    name
-  });
-  return `maludex://pair?${query.toString()}`;
 }
 
 function printHelp(): void {

@@ -17,6 +17,7 @@ import {
   type LaunchAgentSnapshot,
   type TokenFileSnapshot
 } from "./doctor.js";
+import { pairingUriFor } from "./pairing-uri.js";
 
 type DoctorCliOptions = {
   json: boolean;
@@ -29,6 +30,7 @@ type DoctorCliOptions = {
   port?: number;
   qrFile?: string;
   name: string;
+  tls: boolean;
 };
 
 async function main(): Promise<void> {
@@ -240,15 +242,15 @@ async function writePairingQr(options: DoctorCliOptions): Promise<void> {
   const host = options.host ?? snapshot.bridge?.host ?? snapshot.tailscaleIp ?? "127.0.0.1";
   const port = options.port ?? snapshot.bridge?.port ?? 8765;
   const token = loadCapabilityTokenFromFile(options.tokenFile);
-  const query = new URLSearchParams({
+  const pairingUri = pairingUriFor({
     host,
-    port: String(port),
+    port,
     token,
-    tls: "0",
-    name: options.name
+    name: options.name,
+    tls: options.tls
   });
   const qrFile = options.qrFile ?? "/tmp/maludex-pairing.png";
-  await QRCode.toFile(qrFile, `maludex://pair?${query.toString()}`, {
+  await QRCode.toFile(qrFile, pairingUri, {
     type: "png",
     margin: 2,
     scale: 8
@@ -318,7 +320,8 @@ function parseArgs(args: string[]): DoctorCliOptions {
     repoRoot,
     tokenFile: process.env.BRIDGE_TOKEN_FILE ?? path.join(homedir(), ".codex-iphone-remote-bridge", "token"),
     plistPath: process.env.BRIDGE_LAUNCH_AGENT ?? path.join(homedir(), "Library", "LaunchAgents", "com.maludex.bridge.plist"),
-    name: process.env.BRIDGE_NAME ?? hostname()
+    name: process.env.BRIDGE_NAME ?? hostname(),
+    tls: process.env.BRIDGE_TLS === "1"
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -351,6 +354,8 @@ function parseArgs(args: string[]): DoctorCliOptions {
       options.qrFile = requiredValue(args, ++index, "--qr-file");
     } else if (arg === "--name") {
       options.name = requiredValue(args, ++index, "--name");
+    } else if (arg === "--tls") {
+      options.tls = true;
     } else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -430,6 +435,7 @@ Options:
   --rotate-token      Rotate the pairing token and restart the bridge.
   --pairing-qr        Write a pairing QR image.
   --qr-file <path>    QR file path. Defaults to /tmp/maludex-pairing.png.
+  --tls               Encode wss pairing for an Nginx/TLS endpoint.
   --host <host>       Override bridge host for checks and QR generation.
   --port <port>       Override bridge port for checks and QR generation.
 `);

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.19 - 2026-05-05
+
+- Add a shared pairing URI helper so bridge, doctor, and token rotation QR flows encode pairing payloads consistently.
+- Add `--tls` / `BRIDGE_TLS=1` support to the live bridge QR and doctor pairing QR generation for Nginx/TLS endpoints.
+- Add regression coverage for `tls=0` local pairing and `tls=1` remote TLS pairing payloads.
+
 ## 0.6.18 - 2026-05-05
 
 - Include the effective mobile handoff retention count in token-free `bridge.status` diagnostics.

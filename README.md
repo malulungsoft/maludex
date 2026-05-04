@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.6.18`
+Current version: `v0.6.19`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 
@@ -201,6 +201,12 @@ For an Nginx/TLS endpoint:
 
 ```bash
 npm run rotate-token -- --host maludex.example.com --port 443 --tls --name "Studio Mac" --qr-file /tmp/maludex-pairing.png
+```
+
+You can also generate a TLS pairing QR without rotating the token:
+
+```bash
+npm run doctor -- --pairing-qr --host maludex.example.com --port 443 --tls --qr-file /tmp/maludex-pairing.png
 ```
 
 The command replaces the token file with a new `0600` high-entropy token and

@@ -90,20 +90,27 @@ server {
 
 ## Pairing URI
 
-When Nginx terminates TLS on port `443`, pair the iPhone with `tls=1`:
+When Nginx terminates TLS on port `443`, generate a pairing QR with `tls=1`:
+
+```bash
+npm run doctor -- --pairing-qr --host maludex.example.com --port 443 --tls --qr-file /tmp/maludex-pairing.png
+```
+
+For token rotation and QR generation in one step:
+
+```bash
+npm run rotate-token -- --host maludex.example.com --port 443 --tls --name "Studio Mac" --qr-file /tmp/maludex-pairing.png
+```
+
+Both commands write a QR image without printing the raw token. The encoded
+payload has this shape:
 
 ```text
 maludex://pair?host=maludex.example.com&port=443&token=<token>&tls=1&name=Studio%20Mac
 ```
 
-The token is the content of the local token file:
-
-```bash
-cat ~/.codex-iphone-remote-bridge/token
-```
-
-Do not paste that token into GitHub issues, chat logs, screenshots, or README
-examples.
+Do not paste the token, QR image, or full pairing URI into GitHub issues, chat
+logs, screenshots, or README examples.
 
 ## Extra Hardening Checklist
 
