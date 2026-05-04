@@ -32,6 +32,7 @@ There is no cloud relay in this MVP.
 | Token file readable by other users | Bridge refuses token files whose permissions are not exactly `0600`. |
 | Token visible in bridge logs | The QR URI is rendered as a QR code; raw token text is not printed by the CLI logger. |
 | Prompt leakage through logs | Bridge logs metadata and prompt byte length only. |
+| Desktop handoff inbox leaks prompt bodies | The handoff inbox is separate from bridge logs, stored outside the repo at `~/.codex-iphone-remote-bridge/mobile-handoff.jsonl`, forced to `0600`, and pruned to the most recent 200 entries by default. Users can lower retention with `BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES` or `--mobile-handoff-max-entries`; docs warn not to commit or share it. |
 | Remote command execution without review | Threads and turns default to `on-request`; approvals are forwarded to the phone. |
 | Excessive filesystem access | Thread default sandbox is `read-only`; workspace-write must be requested explicitly. Mobile clients cannot request `danger-full-access`. |
 | Accidental no-approval mode | The bridge rejects mobile attempts to use `approvalPolicy: "never"` and falls back to `on-request`. |
@@ -46,7 +47,7 @@ There is no cloud relay in this MVP.
 | Attachment previews leak local content to the paired phone | Only authenticated clients can request chat history; image previews are byte-limited, while documents are represented as metadata cards. Treat a paired iPhone as trusted. |
 | Attachments write unexpected locations | Attachments are written only under the selected workspace's `.codex-mobile-attachments/` directory with safe filenames and `0600` permissions. |
 | Attachment payload exhausts memory or disk | Bridge limits attachments to 5 per turn and 15 MB each. |
-| Approval request arrives while phone is offline | Bridge buffers approval events with event IDs for the next authenticated reconnect. |
+| Approval request arrives while phone is offline | Bridge buffers approval events with event IDs for the next authenticated reconnect, then denies them after the approval timeout if no trusted client responds. |
 | Stolen QR token reused | Token is high-entropy and file-protected. `npm run rotate-token` replaces it with a new `0600` token, and the running bridge disconnects existing mobile clients after detecting the file change. |
 | Slow client consumes unbounded memory | Bridge queues outbound frames up to a cap, then closes the slow client. |
 
@@ -61,6 +62,7 @@ There is no cloud relay in this MVP.
 - Approval params can include sensitive command paths or filenames because the phone needs them for review.
 - Project lists and attachment filenames can reveal local metadata to anyone holding the pairing token.
 - Chat titles, previews, and restored transcript content can be sensitive; a paired iPhone should be treated as trusted while connected.
+- The desktop handoff inbox can contain iPhone prompt bodies. It is private local state, not public diagnostics; deleting it removes that recovery trail.
 - Saved iOS transcript content remains on the device until the user taps `Forget` or deletes the app.
 
 ## Security Invariants

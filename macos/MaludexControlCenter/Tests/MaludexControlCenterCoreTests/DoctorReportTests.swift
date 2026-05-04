@@ -2,6 +2,60 @@ import XCTest
 @testable import MaludexControlCenterCore
 
 final class DoctorReportTests: XCTestCase {
+    func testDecodesMobileHandoffReportAndBoundsPromptPreview() throws {
+        let json = """
+        {
+          "file": "/Users/example/.codex-iphone-remote-bridge/mobile-handoff.jsonl",
+          "entries": [
+            {
+              "schemaVersion": 1,
+              "id": "handoff-1",
+              "createdAt": "2026-05-05T01:02:03.000Z",
+              "source": "iphone",
+              "kind": "turn.start",
+              "threadId": "thread-1234567890",
+              "turnId": "turn-1",
+              "cwd": "/Users/example/App",
+              "model": "gpt-5.5",
+              "prompt": "Please review the iPhone handoff inbox and summarize next steps for the desktop user.",
+              "promptBytes": 83,
+              "attachments": [
+                {
+                  "kind": "image",
+                  "filename": "photo.png",
+                  "mimeType": "image/png",
+                  "bytes": 42
+                }
+              ]
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let report = try JSONDecoder().decode(MobileHandoffReport.self, from: json)
+
+        XCTAssertEqual(report.file, "/Users/example/.codex-iphone-remote-bridge/mobile-handoff.jsonl")
+        XCTAssertEqual(report.entries.count, 1)
+        XCTAssertEqual(report.entries[0].kind, "turn.start")
+        XCTAssertEqual(report.entries[0].attachments.first?.filename, "photo.png")
+        XCTAssertEqual(report.entries[0].promptPreview(maxCharacters: 24).count, 27)
+        XCTAssertTrue(report.entries[0].promptPreview(maxCharacters: 24).hasSuffix("..."))
+        XCTAssertEqual(report.entries[0].shortThreadId, "thread-1...")
+    }
+
+    func testControlCenterCopyDefaultsToEnglishAndSupportsKorean() {
+        XCTAssertEqual(ControlCenterLanguage.fallback, .english)
+        XCTAssertEqual(ControlCenterCopy(language: .english).bridgeActionsTitle, "Bridge Actions")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).bridgeActionsTitle, "브릿지 작업")
+        XCTAssertEqual(ControlCenterCopy(languageCode: "unknown").refreshButton, "Refresh")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).statusLabel(.healthy), "정상")
+        XCTAssertEqual(ControlCenterCopy(language: .english).copyPromptButton, "Copy Prompt")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).expandPromptButton, "전체 보기")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).copyQRImageButton, "QR 이미지 복사")
+        XCTAssertEqual(ControlCenterCopy(language: .english).nextStepTitle, "Recommended Next Step")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).recommendedActionTitle("repair"), "복구")
+    }
+
     func testDecodesHealthyDoctorReport() throws {
         let json = """
         {
@@ -79,5 +133,84 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertEqual(report.primaryAction, "repair")
         XCTAssertTrue(report.repairable)
         XCTAssertEqual(report.issues.first?.code, "launch_agent_repo_mismatch")
+    }
+
+    func testToolResolverFindsHomebrewNodeWhenAppPathDoesNotContainIt() {
+        let resolved = ToolExecutableResolver.resolve(
+            command: "node",
+            environment: ["PATH": "/usr/bin:/bin"],
+            fileExists: { $0 == "/opt/homebrew/bin/node" }
+        )
+
+        XCTAssertEqual(resolved.executable, "/opt/homebrew/bin/node")
+        XCTAssertEqual(resolved.argumentsPrefix, [])
+    }
+
+    func testToolExecutionEnvironmentKeepsResolvedToolDirectoryOnPath() {
+        let tool = ToolExecutable(executable: "/opt/homebrew/bin/node", argumentsPrefix: [])
+        let environment = ToolExecutableResolver.executionEnvironment(
+            for: tool,
+            baseEnvironment: ["PATH": "/usr/bin:/bin", "HOME": "/Users/example"]
+        )
+        let pathItems = environment["PATH"]?.split(separator: ":").map(String.init) ?? []
+
+        XCTAssertEqual(pathItems.first, "/opt/homebrew/bin")
+        XCTAssertTrue(pathItems.contains("/usr/bin"))
+        XCTAssertTrue(pathItems.contains("/bin"))
+    }
+
+    func testToolResolverFindsVoltaNodeBeforeShellFallback() {
+        let resolved = ToolExecutableResolver.resolve(
+            command: "node",
+            environment: ["HOME": "/Users/example", "PATH": "/usr/bin:/bin"],
+            fileExists: { $0 == "/Users/example/.volta/bin/node" || $0 == "/bin/zsh" }
+        )
+
+        XCTAssertEqual(resolved.executable, "/Users/example/.volta/bin/node")
+        XCTAssertEqual(resolved.argumentsPrefix, [])
+    }
+
+    func testToolResolverUsesManagedShellFallbackForNvmWhenDirectNodeIsUnavailable() {
+        let resolved = ToolExecutableResolver.resolve(
+            command: "node",
+            environment: ["HOME": "/Users/example", "PATH": "/usr/bin:/bin"],
+            fileExists: { $0 == "/bin/zsh" }
+        )
+
+        XCTAssertEqual(resolved.executable, "/bin/zsh")
+        XCTAssertEqual(Array(resolved.argumentsPrefix.prefix(2)), ["-lc", ToolExecutableResolver.managedShellBootstrap])
+        XCTAssertEqual(Array(resolved.argumentsPrefix.suffix(2)), ["maludex-tool", "node"])
+        XCTAssertTrue(ToolExecutableResolver.managedShellBootstrap.contains(".nvm/nvm.sh"))
+    }
+
+    func testToolResolverFallsBackToEnvWhenNoKnownPathExists() {
+        let resolved = ToolExecutableResolver.resolve(
+            command: "node",
+            environment: ["PATH": "/usr/bin:/bin"],
+            fileExists: { _ in false }
+        )
+
+        XCTAssertEqual(resolved.executable, "/usr/bin/env")
+        XCTAssertEqual(resolved.argumentsPrefix, ["node"])
+    }
+
+    func testToolResolverPrefersExplicitOverride() {
+        let resolved = ToolExecutableResolver.resolve(
+            command: "npm",
+            environment: ["MALUDEX_NPM_PATH": "/custom/bin/npm", "PATH": "/usr/bin:/bin"],
+            fileExists: { $0 == "/custom/bin/npm" || $0 == "/opt/homebrew/bin/npm" }
+        )
+
+        XCTAssertEqual(resolved.executable, "/custom/bin/npm")
+        XCTAssertEqual(resolved.argumentsPrefix, [])
+    }
+
+    func testDoctorRunnerExposesMobileHandoffCommand() {
+        let runner = DoctorRunner(repoRoot: URL(fileURLWithPath: "/Users/example/maludex"))
+
+        XCTAssertEqual(
+            runner.mobileHandoffCommand(limit: 5),
+            "node dist/bridge/src/mobile-handoff-cli.js --json --limit 5"
+        )
     }
 }

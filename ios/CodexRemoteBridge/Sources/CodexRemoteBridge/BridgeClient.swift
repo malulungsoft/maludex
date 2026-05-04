@@ -14,6 +14,32 @@ enum ConnectionState: String, Equatable {
     case failed = "Connection issue"
 }
 
+enum MobileNotificationAuthorizationStatus: String, Equatable {
+    case unknown
+    case notDetermined
+    case denied
+    case authorized
+    case provisional
+    case ephemeral
+
+    init(_ status: UNAuthorizationStatus) {
+        switch status {
+        case .notDetermined:
+            self = .notDetermined
+        case .denied:
+            self = .denied
+        case .authorized:
+            self = .authorized
+        case .provisional:
+            self = .provisional
+        case .ephemeral:
+            self = .ephemeral
+        @unknown default:
+            self = .unknown
+        }
+    }
+}
+
 struct ApprovalRequest: Identifiable, Equatable {
     let id: String
     let method: String
@@ -58,6 +84,7 @@ final class BridgeClient: ObservableObject {
     @Published private(set) var events: [BridgeEvent] = []
     @Published private(set) var transcript: [TranscriptEntry] = []
     @Published private(set) var approvals: [ApprovalRequest] = []
+    @Published private(set) var respondingApprovalIds: Set<String> = []
     @Published private(set) var projects: [ProjectOption] = []
     @Published private(set) var projectRoots: [ProjectRootOption] = []
     @Published private(set) var models: [CodexModelOption] = []
@@ -71,6 +98,9 @@ final class BridgeClient: ObservableObject {
     @Published private(set) var savedBridges: [SavedBridge] = []
     @Published private(set) var activeBridgeId = ""
     @Published private(set) var diagnostics: BridgeDiagnostics?
+    @Published private(set) var notificationAuthorizationStatus = MobileNotificationAuthorizationStatus.unknown
+    @Published private(set) var customPromptTemplates: [PromptTemplate] = []
+    @Published private(set) var favoriteProjectPaths: [String] = []
     @Published var selectedProjectPath = "" {
         didSet { persistSnapshot() }
     }
@@ -89,6 +119,9 @@ final class BridgeClient: ObservableObject {
     @Published var selectedSandbox = SandboxOption.readOnly.rawValue {
         didSet { persistSnapshot() }
     }
+    @Published var selectedLanguageCode = AppLanguage.fallback.rawValue {
+        didSet { persistSnapshot() }
+    }
     @Published var autoCompactEnabled = true {
         didSet { persistSnapshot() }
     }
@@ -96,6 +129,9 @@ final class BridgeClient: ObservableObject {
         didSet { persistSnapshot() }
     }
     @Published var threadId = "" {
+        didSet { persistSnapshot() }
+    }
+    @Published var promptDraft = "" {
         didSet { persistSnapshot() }
     }
     @Published var lastError: String?
@@ -114,6 +150,18 @@ final class BridgeClient: ObservableObject {
 
     var canSteerPrompt: Bool {
         canSendPrompt && activeTurnId != nil
+    }
+
+    var selectedLanguage: AppLanguage {
+        AppLanguage(rawValue: selectedLanguageCode) ?? .fallback
+    }
+
+    var copy: AppCopy {
+        AppCopy(language: selectedLanguage)
+    }
+
+    var quickPromptTemplates: [PromptTemplate] {
+        PromptTemplate.mergedBuiltIns(language: selectedLanguage, custom: customPromptTemplates)
     }
 
     var activeThreadLabel: String {
@@ -148,16 +196,39 @@ final class BridgeClient: ObservableObject {
     private var transcriptCursor: String?
     private var nextId = 1
     private var lastEventId = 0
+    private var pendingApprovalResponseIds: [String: String] = [:]
     private let transcriptStore = TranscriptStore()
     private let stateStore: DeviceStateStore
     private let notificationScheduler = LocalNotificationScheduler()
     private var suppressPersistence = false
+    private var appIsActive = true
 
     init(stateStore: DeviceStateStore = DeviceStateStore()) {
         self.stateStore = stateStore
         restorePersistedState()
         refreshSavedPairingState()
-        notificationScheduler.requestAuthorizationIfNeeded()
+        notificationScheduler.requestAuthorizationIfNeeded { [weak self] in
+            Task { @MainActor in
+                self?.refreshNotificationAuthorizationStatus()
+            }
+        }
+        refreshNotificationAuthorizationStatus()
+    }
+
+    func setAppIsActive(_ isActive: Bool) {
+        appIsActive = isActive
+        refreshNotificationAuthorizationStatus()
+        if !isActive {
+            schedulePendingApprovalNotifications()
+        }
+    }
+
+    func refreshNotificationAuthorizationStatus() {
+        notificationScheduler.authorizationStatus { [weak self] status in
+            Task { @MainActor in
+                self?.notificationAuthorizationStatus = MobileNotificationAuthorizationStatus(status)
+            }
+        }
     }
 
     func connect(pairing: Pairing) {
@@ -230,15 +301,68 @@ final class BridgeClient: ObservableObject {
         }
     }
 
+    func renameSavedBridge(id: String, label: String) {
+        stateStore.renameBridge(id: id, label: label)
+        refreshSavedPairingState()
+        if let current = pairing, current.id == id, let renamed = savedBridges.first(where: { $0.id == id }) {
+            pairing = Pairing(
+                host: current.host,
+                port: current.port,
+                token: current.token,
+                usesTLS: current.usesTLS,
+                label: renamed.label
+            )
+        }
+    }
+
+    func saveCustomPromptTemplate(id: String? = nil, title: String, prompt: String, systemImage: String) {
+        let existingId = id?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let templateId: String
+        if let existingId, !existingId.isEmpty {
+            templateId = existingId
+        } else {
+            templateId = "custom-\(UUID().uuidString)"
+        }
+        let template = PromptTemplate(
+            id: templateId,
+            title: title,
+            prompt: prompt,
+            systemImage: systemImage
+        )
+        stateStore.saveCustomPromptTemplate(template)
+        refreshCustomPromptTemplates()
+    }
+
+    func deleteCustomPromptTemplate(id: String) {
+        stateStore.deleteCustomPromptTemplate(id: id)
+        refreshCustomPromptTemplates()
+    }
+
+    func moveCustomPromptTemplate(id: String, direction: Int) {
+        stateStore.moveCustomPromptTemplate(id: id, direction: direction)
+        refreshCustomPromptTemplates()
+    }
+
+    func isFavoriteProject(_ path: String) -> Bool {
+        favoriteProjectPaths.contains(path)
+    }
+
+    func toggleFavoriteProject(path: String) {
+        stateStore.toggleFavoriteProject(path: path)
+        refreshFavoriteProjects()
+    }
+
     func disconnect() {
         manuallyDisconnected = true
         cancelReconnect()
         closeSocket(setOffline: true)
         connectionState = .offline
         approvals.removeAll()
+        clearPendingApprovalResponses()
     }
 
     func forgetSavedDeviceState() {
+        let preservedLanguageCode = selectedLanguageCode
         disconnect()
         do {
             try stateStore.clear()
@@ -253,6 +377,7 @@ final class BridgeClient: ObservableObject {
         selectedReasoningEffort = ReasoningEffortOption.fallback
         selectedApprovalPolicy = ApprovalPolicyOption.onRequest.rawValue
         selectedSandbox = SandboxOption.readOnly.rawValue
+        selectedLanguageCode = preservedLanguageCode.isEmpty ? AppLanguage.fallback.rawValue : preservedLanguageCode
         autoCompactEnabled = true
         autoCompactTokenLimit = 120000
         threadId = ""
@@ -264,6 +389,8 @@ final class BridgeClient: ObservableObject {
         projectRoots.removeAll()
         models.removeAll()
         chats.removeAll()
+        customPromptTemplates.removeAll()
+        favoriteProjectPaths.removeAll()
         transcriptStore.replace(with: [])
         transcript = []
         savedBridges = []
@@ -271,6 +398,7 @@ final class BridgeClient: ObservableObject {
         hasSavedPairing = false
         savedPairingLabel = nil
         suppressPersistence = false
+        persistSnapshot()
         refreshSavedPairingState()
     }
 
@@ -549,9 +677,18 @@ final class BridgeClient: ObservableObject {
         respond(to: approval, decision: "decline")
     }
 
+    func isResponding(to approval: ApprovalRequest) -> Bool {
+        respondingApprovalIds.contains(approval.id)
+    }
+
     private func respond(to approval: ApprovalRequest, decision: String) {
+        guard !respondingApprovalIds.contains(approval.id) else {
+            appendEvent("approval", "waiting for confirmation")
+            return
+        }
+        let requestId = nextMessageId(prefix: "ios-approval")
         var body: [String: JSONValue] = [
-            "id": .string(nextMessageId()),
+            "id": .string(requestId),
             "type": .string("approval.respond"),
             "approvalId": .string(approval.id),
             "decision": .string(decision)
@@ -564,8 +701,10 @@ final class BridgeClient: ObservableObject {
             body["scope"] = .string("turn")
         }
 
+        pendingApprovalResponseIds[requestId] = approval.id
+        respondingApprovalIds.insert(approval.id)
         send(body)
-        approvals.removeAll { $0.id == approval.id }
+        appendEvent("approval", "sent \(decision)")
     }
 
     private func appendSessionSettings(to body: inout [String: JSONValue], includeAutoCompact: Bool) {
@@ -642,6 +781,7 @@ final class BridgeClient: ObservableObject {
         closeSocket(setOffline: false)
         connectionState = .failed
         approvals.removeAll()
+        clearPendingApprovalResponses()
         isLoadingOlderTranscript = false
         appendEvent("bridge", "connection lost: \(error.localizedDescription)")
         if reportError {
@@ -761,6 +901,8 @@ final class BridgeClient: ObservableObject {
                 handleCodexEvent(object)
             case "approval.requested":
                 handleApproval(object)
+            case "approval.responded", "approval.resolved":
+                handleApprovalResolved(object)
             case "prompt.queue.updated":
                 handlePromptQueueUpdated(object)
             case "prompt.queue.started":
@@ -780,6 +922,10 @@ final class BridgeClient: ObservableObject {
             if let id = object["id"]?.stringValue,
                id.hasPrefix("ios-chat-history") {
                 isLoadingOlderTranscript = false
+            }
+            if let id = object["id"]?.stringValue,
+               id.hasPrefix("ios-approval") {
+                clearPendingApprovalResponse(requestId: id)
             }
             if let error = object["error"]?.objectValue {
                 lastError = userFacingBridgeError(error)
@@ -823,6 +969,13 @@ final class BridgeClient: ObservableObject {
                 return
             }
             if id.hasPrefix("ios-ping") {
+                return
+            }
+            if id.hasPrefix("ios-approval") {
+                if let approvalId = clearPendingApprovalResponse(requestId: id) {
+                    approvals.removeAll { $0.id == approvalId }
+                }
+                appendEvent("approval", "confirmed")
                 return
             }
             if id.hasPrefix("ios-subagent") {
@@ -1086,6 +1239,7 @@ final class BridgeClient: ObservableObject {
                 }
             }
             approvals.removeAll()
+            clearPendingApprovalResponses()
         }
 
         if method == "thread/compacted" {
@@ -1122,6 +1276,39 @@ final class BridgeClient: ObservableObject {
         scheduleNotification(type: "approval.requested", method: method, params: params, approvalId: approvalId)
     }
 
+    private func handleApprovalResolved(_ object: [String: JSONValue]) {
+        updateLastEventId(from: object)
+        guard let approvalId = object["approvalId"]?.stringValue else {
+            return
+        }
+        approvals.removeAll { $0.id == approvalId }
+        clearPendingApprovalResponses(for: approvalId)
+        let decision = object["decision"]?.stringValue ?? "resolved"
+        let reason = object["reason"]?.stringValue
+        appendEvent("approval", reason == nil ? decision : "\(decision) · \(reason!)")
+    }
+
+    @discardableResult
+    private func clearPendingApprovalResponse(requestId: String) -> String? {
+        guard let approvalId = pendingApprovalResponseIds.removeValue(forKey: requestId) else {
+            return nil
+        }
+        if !pendingApprovalResponseIds.values.contains(approvalId) {
+            respondingApprovalIds.remove(approvalId)
+        }
+        return approvalId
+    }
+
+    private func clearPendingApprovalResponses(for approvalId: String) {
+        pendingApprovalResponseIds = pendingApprovalResponseIds.filter { $0.value != approvalId }
+        respondingApprovalIds.remove(approvalId)
+    }
+
+    private func clearPendingApprovalResponses() {
+        pendingApprovalResponseIds.removeAll()
+        respondingApprovalIds.removeAll()
+    }
+
     private func setActiveThread(_ id: String) {
         if threadId != id {
             threadId = id
@@ -1153,10 +1340,19 @@ final class BridgeClient: ObservableObject {
     }
 
     private func scheduleNotification(type: String, method: String?, params: [String: JSONValue], approvalId: String?) {
+        guard shouldScheduleMobileNotification(type: type, appIsActive: appIsActive) else {
+            return
+        }
         guard let intent = mobileNotificationIntent(type: type, method: method, params: params, approvalId: approvalId) else {
             return
         }
         notificationScheduler.schedule(intent)
+    }
+
+    private func schedulePendingApprovalNotifications() {
+        for approval in approvals where !respondingApprovalIds.contains(approval.id) {
+            scheduleNotification(type: "approval.requested", method: approval.method, params: approval.params, approvalId: approval.id)
+        }
     }
 
     private func nextMessageId(prefix: String = "ios") -> String {
@@ -1175,9 +1371,11 @@ final class BridgeClient: ObservableObject {
         selectedReasoningEffort = snapshot.selectedReasoningEffort
         selectedApprovalPolicy = snapshot.selectedApprovalPolicy
         selectedSandbox = snapshot.selectedSandbox
+        selectedLanguageCode = AppLanguage(rawValue: snapshot.languageCode)?.rawValue ?? AppLanguage.fallback.rawValue
         autoCompactEnabled = snapshot.autoCompactEnabled
         autoCompactTokenLimit = snapshot.autoCompactTokenLimit
         threadId = snapshot.threadId
+        promptDraft = snapshot.promptDraft
         lastEventId = snapshot.lastEventId
         transcriptStore.replace(with: snapshot.transcript)
         transcript = transcriptStore.entries
@@ -1186,6 +1384,8 @@ final class BridgeClient: ObservableObject {
         isLoadingOlderTranscript = false
         activeBridgeId = snapshot.activeBridgeId
         savedBridges = stateStore.savedBridges()
+        customPromptTemplates = stateStore.customPromptTemplates()
+        favoriteProjectPaths = stateStore.favoriteProjectPaths()
         suppressPersistence = false
     }
 
@@ -1198,6 +1398,14 @@ final class BridgeClient: ObservableObject {
         savedPairingLabel = bridges.first(where: { $0.id == activeBridgeId })?.label ?? bridges.first?.label
     }
 
+    private func refreshCustomPromptTemplates() {
+        customPromptTemplates = stateStore.customPromptTemplates()
+    }
+
+    private func refreshFavoriteProjects() {
+        favoriteProjectPaths = stateStore.favoriteProjectPaths()
+    }
+
     private func persistSnapshot() {
         guard !suppressPersistence else {
             return
@@ -1208,9 +1416,11 @@ final class BridgeClient: ObservableObject {
             selectedReasoningEffort: selectedReasoningEffort,
             selectedApprovalPolicy: selectedApprovalPolicy,
             selectedSandbox: selectedSandbox,
+            languageCode: selectedLanguageCode,
             autoCompactEnabled: autoCompactEnabled,
             autoCompactTokenLimit: autoCompactTokenLimit,
             threadId: threadId,
+            promptDraft: promptDraft,
             lastEventId: lastEventId,
             transcript: transcriptStore.entries
         )
@@ -1221,12 +1431,21 @@ private final class LocalNotificationScheduler {
     private let center = UNUserNotificationCenter.current()
     private var requestedAuthorization = false
 
-    func requestAuthorizationIfNeeded() {
+    func requestAuthorizationIfNeeded(completion: (() -> Void)? = nil) {
         guard !requestedAuthorization else {
+            completion?()
             return
         }
         requestedAuthorization = true
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        center.requestAuthorization(options: [.alert, .sound]) { _, _ in
+            completion?()
+        }
+    }
+
+    func authorizationStatus(completion: @escaping (UNAuthorizationStatus) -> Void) {
+        center.getNotificationSettings { settings in
+            completion(settings.authorizationStatus)
+        }
     }
 
     func schedule(_ intent: MobileNotificationIntent) {

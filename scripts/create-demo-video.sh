@@ -20,6 +20,10 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ "${MALUDEX_DEMO_SKIP_RENDER:-0}" != "1" ]]; then
+  swift scripts/render-demo-screenshots.swift "$SCREENSHOT_DIR"
+fi
+
 screenshots=(
   pairing
   connected-home

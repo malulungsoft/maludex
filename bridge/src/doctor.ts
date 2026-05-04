@@ -114,6 +114,17 @@ export function analyzeDoctorSnapshot(snapshot: DoctorSnapshot): DoctorReport {
         repairable: true
       });
     }
+
+    const bindHost = bridgeBindHost(snapshot.launchAgent.programArguments);
+    if (bindHost && isWildcardBindHost(bindHost)) {
+      issues.push({
+        code: "launch_agent_wildcard_host",
+        severity: "error",
+        title: "LaunchAgent uses an unsafe wildcard bridge host",
+        detail: `The bridge refuses wildcard WebSocket binds such as ${bindHost}. Use 127.0.0.1, ::1, or a specific Tailscale IP instead.`,
+        repairable: true
+      });
+    }
   }
 
   if (!snapshot.tokenFile?.exists) {
@@ -140,6 +151,15 @@ export function analyzeDoctorSnapshot(snapshot: DoctorSnapshot): DoctorReport {
         severity: "error",
         title: "Pairing token permissions are too open",
         detail: `${snapshot.tokenFile.path} must use 0600 permissions.`,
+        repairable: true
+      });
+    }
+    if (typeof snapshot.tokenFile.bytes === "number" && snapshot.tokenFile.bytes < 32) {
+      issues.push({
+        code: "token_file_too_short",
+        severity: "error",
+        title: "Pairing token is too short",
+        detail: `${snapshot.tokenFile.path} must contain at least 32 bytes of token material. Rotate the token before pairing an iPhone.`,
         repairable: true
       });
     }
@@ -212,6 +232,18 @@ function bridgeEntrypoint(programArguments: string[] | undefined): string | null
     return null;
   }
   return programArguments.find((argument) => argument.endsWith("/dist/bridge/src/index.js")) ?? null;
+}
+
+function bridgeBindHost(programArguments: string[] | undefined): string | null {
+  const hostIndex = programArguments?.indexOf("--host") ?? -1;
+  if (hostIndex < 0) {
+    return null;
+  }
+  return programArguments?.[hostIndex + 1] ?? null;
+}
+
+function isWildcardBindHost(host: string): boolean {
+  return host === "0.0.0.0" || host === "::";
 }
 
 function statusForIssues(issues: DoctorIssue[]): DoctorStatus {

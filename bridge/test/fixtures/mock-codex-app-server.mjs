@@ -14,6 +14,21 @@ function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
 
+function sendApprovalRequest(message) {
+  send({
+    id: "approval-1",
+    method: "item/commandExecution/requestApproval",
+    params: {
+      threadId: message.params.threadId,
+      turnId: "turn-1",
+      itemId: "cmd-1",
+      command: "npm test",
+      cwd: process.cwd(),
+      availableDecisions: ["accept", "decline", "cancel"]
+    }
+  });
+}
+
 function thread(overrides = {}) {
   return {
     id: "thread-1",
@@ -468,18 +483,12 @@ rl.on("line", (line) => {
       method: "item/agentMessage/delta",
       params: { threadId: message.params.threadId, turnId: "turn-1", itemId: "item-1", delta: "hello" }
     });
-    send({
-      id: "approval-1",
-      method: "item/commandExecution/requestApproval",
-      params: {
-        threadId: message.params.threadId,
-        turnId: "turn-1",
-        itemId: "cmd-1",
-        command: "npm test",
-        cwd: process.cwd(),
-        availableDecisions: ["accept", "decline", "cancel"]
-      }
-    });
+    const approvalDelayMs = Number(process.env.MOCK_CODEX_DELAY_APPROVAL_MS ?? "0");
+    if (Number.isFinite(approvalDelayMs) && approvalDelayMs > 0) {
+      setTimeout(() => sendApprovalRequest(message), approvalDelayMs);
+    } else {
+      sendApprovalRequest(message);
+    }
     return;
   }
 

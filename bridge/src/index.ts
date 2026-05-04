@@ -6,6 +6,7 @@ import path from "node:path";
 import { generateCapabilityToken, loadCapabilityTokenFromFile } from "./auth.js";
 import { BridgeServer } from "./bridge-server.js";
 import { createLogger } from "./logger.js";
+import { pairingUriFor } from "./pairing-uri.js";
 
 type CliOptions = {
   host: string;
@@ -13,8 +14,10 @@ type CliOptions = {
   codexCommand: string;
   codexArgs: string[];
   tokenFile: string;
+  mobileHandoffMaxEntries?: number;
   qr: boolean;
   name: string;
+  tls: boolean;
 };
 
 async function main() {
@@ -26,6 +29,7 @@ async function main() {
     host: options.host,
     port: options.port,
     tokenFile: options.tokenFile,
+    mobileHandoffMaxEntries: options.mobileHandoffMaxEntries,
     codexCommand: options.codexCommand,
     codexArgs: options.codexArgs,
     logger
@@ -33,7 +37,13 @@ async function main() {
 
   await server.start();
   const address = server.address();
-  const pairingUri = pairingUriFor(address.host, address.port, token, options.name);
+  const pairingUri = pairingUriFor({
+    host: address.host,
+    port: address.port,
+    token,
+    name: options.name,
+    tls: options.tls
+  });
 
   process.stdout.write("\nmaludex bridge is listening.\n");
   process.stdout.write(`WebSocket: ws://${address.host}:${address.port}\n`);
@@ -66,8 +76,13 @@ function parseArgs(args: string[]): CliOptions {
     codexCommand: process.env.CODEX_BIN ?? "codex",
     codexArgs: ["app-server", "--listen", "stdio://"],
     tokenFile: process.env.BRIDGE_TOKEN_FILE ?? defaultTokenFile(),
+    mobileHandoffMaxEntries: parseOptionalBoundedInteger(
+      process.env.BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES,
+      "BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES"
+    ),
     qr: true,
-    name: process.env.BRIDGE_NAME ?? hostname()
+    name: process.env.BRIDGE_NAME ?? hostname(),
+    tls: process.env.BRIDGE_TLS === "1"
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -82,8 +97,15 @@ function parseArgs(args: string[]): CliOptions {
       options.codexArgs.push(requiredValue(args, ++index, "--codex-arg"));
     } else if (arg === "--token-file") {
       options.tokenFile = requiredValue(args, ++index, "--token-file");
+    } else if (arg === "--mobile-handoff-max-entries") {
+      options.mobileHandoffMaxEntries = parseBoundedInteger(
+        requiredValue(args, ++index, "--mobile-handoff-max-entries"),
+        "--mobile-handoff-max-entries"
+      );
     } else if (arg === "--name") {
       options.name = requiredValue(args, ++index, "--name");
+    } else if (arg === "--tls") {
+      options.tls = true;
     } else if (arg === "--no-qr") {
       options.qr = false;
     } else if (arg === "--help" || arg === "-h") {
@@ -122,15 +144,22 @@ function requiredValue(args: string[], index: number, flag: string): string {
   return value;
 }
 
-function pairingUriFor(host: string, port: number, token: string, name: string): string {
-  const query = new URLSearchParams({
-    host,
-    port: String(port),
-    token,
-    tls: "0",
-    name
-  });
-  return `maludex://pair?${query.toString()}`;
+function parseOptionalBoundedInteger(value: string | undefined, name: string): number | undefined {
+  if (value === undefined || value.trim() === "") {
+    return undefined;
+  }
+  return parseBoundedInteger(value, name);
+}
+
+function parseBoundedInteger(value: string, name: string): number {
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`${name} must be an integer between 1 and 1000.`);
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1 || parsed > 1_000) {
+    throw new Error(`${name} must be an integer between 1 and 1000.`);
+  }
+  return parsed;
 }
 
 function printHelp(): void {
@@ -143,7 +172,10 @@ Options:
   --host <ip>         Bind to localhost or a specific Tailscale IP. Wildcard binds are refused.
   --port <port>      WebSocket port. Defaults to 8765.
   --token-file <p>   0600 file containing the bearer capability token.
+  --mobile-handoff-max-entries <n>
+                      Keep this many iPhone-authored handoff prompts. Defaults to 200.
   --name <name>      Friendly bridge name shown on the iPhone. Defaults to hostname.
+  --tls              Encode wss pairing for an Nginx/TLS endpoint.
   --codex-bin <bin>  Codex executable. Defaults to codex.
   --codex-arg <arg>  Extra argument appended after: app-server --listen stdio://
   --no-qr            Do not render the QR pairing code.

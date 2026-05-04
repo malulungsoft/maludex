@@ -15,6 +15,7 @@ build/
 pairing*.json
 pairing*.txt
 prompt-queue.json
+mobile-handoff*.jsonl
 .env
 .env.*
 !.env.example

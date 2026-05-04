@@ -247,6 +247,333 @@ enum SubagentRoleOption: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppLanguage: String, CaseIterable, Identifiable, Codable {
+    case english = "en"
+    case korean = "ko"
+
+    static let fallback = AppLanguage.english
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .english:
+            return "English"
+        case .korean:
+            return "한국어"
+        }
+    }
+}
+
+struct PromptTemplate: Identifiable, Equatable, Codable {
+    let id: String
+    let title: String
+    let prompt: String
+    let systemImage: String
+
+    static func mergedBuiltIns(language: AppLanguage, custom: [PromptTemplate]) -> [PromptTemplate] {
+        let builtIns = builtIn(language: language)
+        let builtInIds = Set(builtIns.map(\.id))
+        return builtIns + custom.filter { !builtInIds.contains($0.id) }
+    }
+
+    static func builtIn(language: AppLanguage) -> [PromptTemplate] {
+        switch language {
+        case .english:
+            return [
+                PromptTemplate(
+                    id: "review",
+                    title: "Review",
+                    prompt: "Review the current changes for bugs, regressions, and missing tests. Start with the highest-risk findings.",
+                    systemImage: "checkmark.shield"
+                ),
+                PromptTemplate(
+                    id: "fix",
+                    title: "Fix",
+                    prompt: "Find the issue, implement the fix, and verify it with focused tests.",
+                    systemImage: "wrench.and.screwdriver"
+                ),
+                PromptTemplate(
+                    id: "explain",
+                    title: "Explain",
+                    prompt: "Explain the current implementation and point me to the most important files.",
+                    systemImage: "text.bubble"
+                ),
+                PromptTemplate(
+                    id: "release",
+                    title: "Release prep",
+                    prompt: "Summarize the current changes, call out risks, and prepare the next release checklist.",
+                    systemImage: "tag"
+                )
+            ]
+        case .korean:
+            return [
+                PromptTemplate(
+                    id: "review",
+                    title: "리뷰",
+                    prompt: "현재 변경사항을 버그, 회귀, 누락된 테스트 중심으로 리뷰해줘. 위험도가 높은 항목부터 알려줘.",
+                    systemImage: "checkmark.shield"
+                ),
+                PromptTemplate(
+                    id: "fix",
+                    title: "수정",
+                    prompt: "문제를 찾아서 수정하고, 관련 테스트로 검증까지 진행해줘.",
+                    systemImage: "wrench.and.screwdriver"
+                ),
+                PromptTemplate(
+                    id: "explain",
+                    title: "설명",
+                    prompt: "현재 구현을 쉽게 설명하고, 먼저 봐야 할 핵심 파일을 알려줘.",
+                    systemImage: "text.bubble"
+                ),
+                PromptTemplate(
+                    id: "release",
+                    title: "릴리즈 준비",
+                    prompt: "현재 변경사항을 요약하고, 남은 위험과 다음 릴리즈 체크리스트를 정리해줘.",
+                    systemImage: "tag"
+                )
+            ]
+        }
+    }
+}
+
+struct AppCopy: Equatable {
+    let language: AppLanguage
+
+    init(language: AppLanguage) {
+        self.language = language
+    }
+
+    init(languageCode: String) {
+        self.language = AppLanguage(rawValue: languageCode) ?? .fallback
+    }
+
+    var okButton: String { text("OK", "확인") }
+    var closeButton: String { text("Close", "닫기") }
+    var cancelButton: String { text("Cancel", "취소") }
+    var doneButton: String { text("Done", "완료") }
+    var startButton: String { text("Start", "시작") }
+    var createButton: String { text("Create", "생성") }
+    var refreshButton: String { text("Refresh", "새로고침") }
+    var connectButton: String { text("Connect", "연결") }
+    var scanButton: String { text("Scan", "스캔") }
+    var settingsTitle: String { text("Settings", "설정") }
+    var sessionTitle: String { text("Session", "세션") }
+    var languageLabel: String { text("Language", "언어") }
+    var showControlsTitle: String { text("Show controls", "컨트롤 보기") }
+    var hideControlsTitle: String { text("Hide controls", "컨트롤 숨기기") }
+    var pairingPayloadTitle: String { text("Pairing payload", "페어링 코드") }
+    var maludexBridgeTitle: String { text("maludex bridge", "maludex 브릿지") }
+    var chatsTitle: String { text("Chats", "채팅") }
+    var searchChatsTitle: String { text("Search chats", "채팅 검색") }
+    var noChatsTitle: String { text("No chats found", "채팅을 찾을 수 없습니다") }
+    var bridgesTitle: String { text("Bridges", "브릿지") }
+    var diagnosticsTitle: String { text("Diagnostics", "진단") }
+    var subagentTitle: String { text("Subagent", "서브에이전트") }
+    var roleTitle: String { text("Role", "역할") }
+    var disconnectTitle: String { text("Disconnect", "연결 끊기") }
+    var activeBridgeTitle: String { text("Active bridge", "활성 브릿지") }
+    var activeThreadTitle: String { text("Active thread", "활성 스레드") }
+    var noActiveThread: String { text("No active thread", "활성 스레드 없음") }
+    var noBridge: String { text("No bridge", "브릿지 없음") }
+    var projectTitle: String { text("Project", "프로젝트") }
+    var noProjectsTitle: String { text("No projects", "프로젝트 없음") }
+    var searchProjectsTitle: String { text("Search projects", "프로젝트 검색") }
+    var favoriteProjectsTitle: String { text("Favorites", "즐겨찾기") }
+    var allProjectsTitle: String { text("All projects", "전체 프로젝트") }
+    var favoriteProjectTitle: String { text("Add to favorites", "즐겨찾기 추가") }
+    var unfavoriteProjectTitle: String { text("Remove from favorites", "즐겨찾기 해제") }
+    var refreshProjectsTitle: String { text("Refresh projects", "프로젝트 새로고침") }
+    var newProjectTitle: String { text("New project", "새 프로젝트") }
+    var projectNamePlaceholder: String { text("Project name", "프로젝트 이름") }
+    var locationTitle: String { text("Location", "위치") }
+    var selectProjectPrompt: String { text("Select a project", "프로젝트를 선택하세요") }
+    var modelTitle: String { text("Model", "모델") }
+    var defaultModelTitle: String { text("Default", "기본값") }
+    var bridgeDefaultModelDetail: String { text("Bridge default model", "브릿지 기본 모델") }
+    var searchModelsTitle: String { text("Search models", "모델 검색") }
+    var noModelsTitle: String { text("No models found", "모델을 찾을 수 없습니다") }
+    var refreshModelsTitle: String { text("Refresh models", "모델 새로고침") }
+    var supportsImagesTitle: String { text("Supports images", "이미지 지원") }
+    var startThreadTitle: String { text("Start thread", "스레드 시작") }
+    var intelligenceTitle: String { text("Intelligence", "인텔리전스") }
+    var autoCompactTitle: String { text("Auto compact", "자동 컨텍스트 압축") }
+    var compactNowTitle: String { text("Compact now", "지금 압축") }
+    var permissionsTitle: String { text("Permissions", "권한") }
+    var filesTitle: String { text("Files", "파일") }
+    var approvalsTitle: String { text("Approvals", "승인") }
+    var mobileSecurityNote: String { text("Full access and never-approve are unavailable on mobile.", "모바일에서는 전체 접근과 무승인 모드를 사용할 수 없습니다.") }
+    var conversationTitle: String { text("Conversation", "대화") }
+    var searchConversationTitle: String { text("Search conversation", "대화 검색") }
+    var noSearchResultsTitle: String { text("No matches", "검색 결과 없음") }
+    var noTranscriptTitle: String { text("No transcript yet", "아직 대화가 없습니다") }
+    var noTranscriptSubtitle: String { text("Ready for a new turn.", "새 작업을 시작할 준비가 됐습니다.") }
+    var streamingTitle: String { text("Streaming", "응답 중") }
+    var copyTitle: String { text("Copy", "복사") }
+    var copyTextTitle: String { text("Copy text", "텍스트 복사") }
+    var collapseTitle: String { text("Collapse", "접기") }
+    var expandTitle: String { text("Expand", "펼치기") }
+    var collapseMessageTitle: String { text("Collapse message", "메시지 접기") }
+    var expandMessageTitle: String { text("Expand message", "메시지 펼치기") }
+    var youLabel: String { text("You", "나") }
+    var threadLabel: String { text("Thread", "스레드") }
+    var pendingTitle: String { text("Pending", "대기 중") }
+    var approvalRespondingTitle: String { text("Waiting for bridge", "브릿지 확인 대기") }
+    var approvalRespondingDetail: String { text("Your response was sent. Keep this card open until the Mac bridge confirms it.", "응답을 보냈습니다. Mac 브릿지가 확인할 때까지 이 카드를 유지합니다.") }
+    var approveTitle: String { text("Approve", "승인") }
+    var denyTitle: String { text("Deny", "거부") }
+    var queueTitle: String { text("Queue", "대기열") }
+    var queuedPromptTitle: String { text("Queued prompt", "대기 중인 프롬프트") }
+    var moveQueuedPromptUpTitle: String { text("Move queued prompt up", "프롬프트 순서 올리기") }
+    var moveQueuedPromptDownTitle: String { text("Move queued prompt down", "프롬프트 순서 내리기") }
+    var cancelQueuedPromptTitle: String { text("Cancel queued prompt", "대기 프롬프트 취소") }
+    var attachmentsTitle: String { text("attachments", "첨부") }
+    var stopTitle: String { text("Stop", "중지") }
+    var photoTitle: String { text("Photo", "사진") }
+    var fileTitle: String { text("File", "파일") }
+    var voiceInputTitle: String { text("Voice input", "음성 입력") }
+    var stopVoiceInputTitle: String { text("Stop voice input", "음성 입력 중지") }
+    var expandComposerTitle: String { text("Expand composer", "입력창 확대") }
+    var composerTitle: String { text("Compose prompt", "프롬프트 작성") }
+    var steerActiveTurnTitle: String { text("Steer active turn", "현재 작업에 추가 지시") }
+    var sendTitle: String { text("Send", "보내기") }
+    var removeAttachmentTitle: String { text("Remove attachment", "첨부 제거") }
+    var quickPromptsTitle: String { text("Quick prompts", "빠른 프롬프트") }
+    var manageQuickPromptsTitle: String { text("Manage quick prompts", "빠른 프롬프트 관리") }
+    var savedQuickPromptsTitle: String { text("Saved prompts", "저장한 프롬프트") }
+    var newQuickPromptTitle: String { text("New quick prompt", "새 빠른 프롬프트") }
+    var editQuickPromptTitle: String { text("Edit prompt", "프롬프트 편집") }
+    var saveQuickPromptTitle: String { text("Save prompt", "프롬프트 저장") }
+    var noSavedQuickPromptsTitle: String { text("No saved prompts", "저장한 프롬프트 없음") }
+    var quickPromptNamePlaceholder: String { text("Short name", "짧은 이름") }
+    var quickPromptBodyPlaceholder: String { text("Prompt body", "프롬프트 내용") }
+    var quickPromptIconPlaceholder: String { text("SF Symbol, e.g. sparkles", "SF Symbol 예: sparkles") }
+    var savedBridgesTitle: String { text("Saved bridges", "저장된 브릿지") }
+    var savedBridgesSubtitle: String { text("Switch between paired local PCs.", "페어링된 로컬 PC들을 전환합니다.") }
+    var renameBridgeTitle: String { text("Rename bridge", "브릿지 이름 변경") }
+    var bridgeNamePlaceholder: String { text("Bridge name", "브릿지 이름") }
+    var forgetTitle: String { text("Forget", "삭제") }
+    var forgetAllTitle: String { text("Forget all", "모두 삭제") }
+    var pairAnotherPCSubtitle: String { text("Pair another PC by scanning that PC's maludex QR.", "다른 PC의 maludex QR을 스캔해서 추가로 페어링하세요.") }
+    var diagnosticsConnectionTitle: String { text("Connection", "연결") }
+    var appVersionTitle: String { text("App version", "앱 버전") }
+    var notificationsTitle: String { text("Notifications", "알림") }
+    var stateTitle: String { text("State", "상태") }
+    var bridgeTitle: String { text("Bridge", "브릿지") }
+    var bridgeVersionTitle: String { text("Bridge version", "브릿지 버전") }
+    var endpointTitle: String { text("Endpoint", "엔드포인트") }
+    var protocolTitle: String { text("Protocol", "프로토콜") }
+    var tokenFileTitle: String { text("Token file", "토큰 파일") }
+    var codexTitle: String { text("Codex", "Codex") }
+    var runtimeTitle: String { text("Runtime", "런타임") }
+    var connectedClientTitle: String { text("Connected client", "연결된 클라이언트") }
+    var activeTurnsTitle: String { text("Active turns", "진행 중 작업") }
+    var queuedPromptsTitle: String { text("Queued prompts", "대기 중 프롬프트") }
+    var pendingApprovalsTitle: String { text("Pending approvals", "대기 중 승인") }
+    var eventBufferTitle: String { text("Event buffer", "이벤트 버퍼") }
+    var mobileHandoffRetentionTitle: String { text("Mobile handoff retention", "모바일 핸드오프 보관") }
+    var projectRootsTitle: String { text("Project roots", "프로젝트 루트") }
+    var uptimeTitle: String { text("Uptime", "가동 시간") }
+    var reportTitle: String { text("Report", "리포트") }
+    var copyReportTitle: String { text("Copy report", "리포트 복사") }
+    var noDiagnosticsTitle: String { text("No diagnostics loaded yet.", "아직 진단 정보를 불러오지 않았습니다.") }
+    var recoveryTitle: String { text("Recovery", "복구") }
+    var notificationsBlockedTitle: String { text("Notifications are blocked", "알림이 차단됨") }
+    var notificationsBlockedDetail: String { text("Enable notifications in iPhone Settings to receive approval alerts while maludex is in the background.", "maludex가 백그라운드에 있을 때 승인 알림을 받으려면 iPhone 설정에서 알림을 허용하세요.") }
+    var openAppSettingsTitle: String { text("Open iPhone Settings", "iPhone 설정 열기") }
+    var cannotConnectTitle: String { text("Cannot connect", "연결할 수 없음") }
+    var cannotConnectDetail: String { text("Check that the Mac bridge is running and the iPhone can reach the paired Tailscale or Nginx address.", "Mac 브릿지가 실행 중이고 iPhone에서 페어링된 Tailscale 또는 Nginx 주소에 접근 가능한지 확인하세요.") }
+    var authFailedTitle: String { text("Authentication failed", "인증 실패") }
+    var authFailedDetail: String { text("The token may have rotated. Forget this bridge on iPhone and scan the new QR.", "토큰이 변경됐을 수 있습니다. iPhone에서 이 브릿지를 삭제한 뒤 새 QR을 스캔하세요.") }
+    var codexNotRunningTitle: String { text("Codex not running", "Codex가 실행 중이 아님") }
+    var codexNotRunningDetail: String { text("Open the Mac and confirm Codex is installed and logged in.", "Mac에서 Codex가 설치되어 있고 로그인되어 있는지 확인하세요.") }
+
+    func askPlaceholder(brand: String) -> String {
+        text("Ask \(brand)...", "\(brand)에게 요청하기...")
+    }
+
+    func limitTitle(thousands: Int) -> String {
+        text("Limit \(thousands)k", "제한 \(thousands)k")
+    }
+
+    func connectionState(_ value: String) -> String {
+        switch value {
+        case "Offline":
+            return text("Offline", "오프라인")
+        case "Connecting":
+            return text("Connecting", "연결 중")
+        case "Connected":
+            return text("Connected", "연결됨")
+        case "Connection issue":
+            return text("Connection issue", "연결 문제")
+        default:
+            return value
+        }
+    }
+
+    func reasoningTitle(_ value: String) -> String {
+        switch value {
+        case "minimal":
+            return text("Minimal", "최소")
+        case "low":
+            return text("Low", "낮음")
+        case "medium":
+            return text("Medium", "중간")
+        case "high":
+            return text("High", "높음")
+        case "xhigh":
+            return text("X High", "매우 높음")
+        default:
+            return value
+        }
+    }
+
+    func sandboxTitle(_ value: String) -> String {
+        switch value {
+        case SandboxOption.readOnly.rawValue:
+            return text("Read only", "읽기 전용")
+        case SandboxOption.workspaceWrite.rawValue:
+            return text("Workspace write", "워크스페이스 쓰기")
+        default:
+            return value
+        }
+    }
+
+    func approvalPolicyTitle(_ value: String) -> String {
+        switch value {
+        case ApprovalPolicyOption.onRequest.rawValue:
+            return text("On request", "요청 시 승인")
+        case ApprovalPolicyOption.onFailure.rawValue:
+            return text("On failure", "실패 시 승인")
+        case ApprovalPolicyOption.untrusted.rawValue:
+            return text("Untrusted", "신뢰 낮음")
+        default:
+            return value
+        }
+    }
+
+    func notificationStatusTitle(_ value: String) -> String {
+        switch value {
+        case "notDetermined":
+            return text("Not determined", "미설정")
+        case "denied":
+            return text("Denied", "거부됨")
+        case "authorized":
+            return text("Authorized", "허용됨")
+        case "provisional":
+            return text("Provisional", "임시 허용")
+        case "ephemeral":
+            return text("Ephemeral", "임시 세션")
+        default:
+            return text("Unknown", "알 수 없음")
+        }
+    }
+
+    private func text(_ english: String, _ korean: String) -> String {
+        language == .korean ? korean : english
+    }
+}
+
 func preferredSpeechLocaleIdentifier(
     preferredLanguages: [String] = Locale.preferredLanguages,
     availableLocaleIdentifiers: Set<String>
@@ -285,7 +612,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.6.1"
+let maludexClientVersion = "0.7.2"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
@@ -392,6 +719,13 @@ func mobileNotificationIntent(
     }
 }
 
+func shouldScheduleMobileNotification(type: String, appIsActive: Bool) -> Bool {
+    if type == "approval.requested" {
+        return !appIsActive
+    }
+    return true
+}
+
 private func approvalTitle(for method: String?) -> String {
     switch method {
     case "item/commandExecution/requestApproval", "execCommandApproval":
@@ -438,6 +772,68 @@ func messageRelativeTime(from date: Date, now: Date = Date()) -> String {
     return "\(months / 12)년 전"
 }
 
+func transcriptEntryCanCollapse(_ entry: TranscriptEntry) -> Bool {
+    !entry.isStreaming && (entry.text.count > 360 || entry.text.split(separator: "\n").count > 8)
+}
+
+func transcriptEntryIsCollapsed(_ entry: TranscriptEntry, userExpanded: Bool, forceExpanded: Bool) -> Bool {
+    transcriptEntryCanCollapse(entry) && !userExpanded && !forceExpanded
+}
+
+struct TranscriptSearchResult: Identifiable, Equatable {
+    let entry: TranscriptEntry
+    let preview: String
+
+    var id: UUID {
+        entry.id
+    }
+
+    var role: TranscriptRole {
+        entry.role
+    }
+}
+
+func transcriptSearchResults(entries: [TranscriptEntry], query: String) -> [TranscriptSearchResult] {
+    let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalizedQuery.isEmpty else {
+        return []
+    }
+
+    return entries.compactMap { entry in
+        let attachmentText = entry.attachments.map(\.filename).joined(separator: " ")
+        let haystack = [entry.text, attachmentText, entry.threadId ?? "", entry.turnId ?? ""]
+            .joined(separator: " ")
+        guard haystack.localizedCaseInsensitiveContains(normalizedQuery) else {
+            return nil
+        }
+        return TranscriptSearchResult(entry: entry, preview: transcriptSearchPreview(for: entry, query: normalizedQuery))
+    }
+}
+
+private func transcriptSearchPreview(for entry: TranscriptEntry, query: String, radius: Int = 72) -> String {
+    let text = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let normalized = text.isEmpty
+        ? entry.attachments.map(\.filename).joined(separator: ", ")
+        : text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    guard !normalized.isEmpty else {
+        return query
+    }
+
+    guard let range = normalized.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) else {
+        return String(normalized.prefix(radius * 2))
+    }
+
+    let lowerDistance = normalized.distance(from: normalized.startIndex, to: range.lowerBound)
+    let upperDistance = normalized.distance(from: normalized.startIndex, to: range.upperBound)
+    let startOffset = max(0, lowerDistance - radius)
+    let endOffset = min(normalized.count, upperDistance + radius)
+    let start = normalized.index(normalized.startIndex, offsetBy: startOffset)
+    let end = normalized.index(normalized.startIndex, offsetBy: endOffset)
+    let prefix = startOffset > 0 ? "..." : ""
+    let suffix = endOffset < normalized.count ? "..." : ""
+    return "\(prefix)\(String(normalized[start..<end]))\(suffix)"
+}
+
 struct BridgeDiagnostics: Equatable {
     struct ActiveTurn: Equatable {
         let threadId: String
@@ -479,9 +875,11 @@ struct BridgeDiagnostics: Equatable {
     let eventBufferSize: Int
     let eventReplayLimit: Int
     let activeTurnCount: Int
+    let promptQueueCount: Int
     let activeTurns: [ActiveTurn]
     let pendingApprovalCount: Int
     let pendingApprovals: [PendingApproval]
+    let mobileHandoffMaxEntries: Int
     let projectRootCount: Int
     let resumedThreadCount: Int
     let uptimeSeconds: Int
@@ -509,6 +907,7 @@ struct BridgeDiagnostics: Equatable {
         self.eventBufferSize = json["eventBufferSize"]?.intValue ?? 0
         self.eventReplayLimit = json["eventReplayLimit"]?.intValue ?? 0
         self.activeTurnCount = json["activeTurnCount"]?.intValue ?? 0
+        self.promptQueueCount = json["promptQueueCount"]?.intValue ?? 0
         self.activeTurns = json["activeTurns"]?.arrayValue?.compactMap { value in
             guard let object = value.objectValue else { return nil }
             return ActiveTurn(json: object)
@@ -518,6 +917,7 @@ struct BridgeDiagnostics: Equatable {
             guard let object = value.objectValue else { return nil }
             return PendingApproval(json: object)
         } ?? []
+        self.mobileHandoffMaxEntries = json["mobileHandoffMaxEntries"]?.intValue ?? 200
         self.projectRootCount = json["projectRootCount"]?.intValue ?? 0
         self.resumedThreadCount = json["resumedThreadCount"]?.intValue ?? 0
         self.uptimeSeconds = json["uptimeSeconds"]?.intValue ?? 0
@@ -537,9 +937,11 @@ struct BridgeDiagnostics: Equatable {
             "eventBufferSize: \(eventBufferSize)",
             "eventReplayLimit: \(eventReplayLimit)",
             "activeTurnCount: \(activeTurnCount)",
+            "promptQueueCount: \(promptQueueCount)",
             "activeTurns: \(activeTurns.map { "\($0.threadId)/\($0.turnId)" }.joined(separator: ", "))",
             "pendingApprovalCount: \(pendingApprovalCount)",
             "pendingApprovals: \(pendingApprovals.map { "\($0.approvalId)/\($0.method)" }.joined(separator: ", "))",
+            "mobileHandoffMaxEntries: \(mobileHandoffMaxEntries)",
             "projectRootCount: \(projectRootCount)",
             "resumedThreadCount: \(resumedThreadCount)",
             "uptimeSeconds: \(uptimeSeconds)"

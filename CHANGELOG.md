@@ -1,5 +1,137 @@
 # Changelog
 
+## 0.7.2 - 2026-05-05
+
+- Fix macOS Control Center repair so GUI-launched doctor commands preserve Homebrew/Node tool paths for LaunchAgent reinstall.
+- Show child process stderr/stdout when doctor repair fails instead of only reporting a generic command failure.
+
+## 0.7.1 - 2026-05-05
+
+- Add iPhone transcript search with Korean/English copy, attachment filename matches, and tap-to-scroll results.
+- Expand and briefly highlight long transcript bubbles when opened from iPhone search results.
+
+## 0.7.0 - 2026-05-05
+
+- Add searchable iPhone project and model picker sheets, including model capability badges.
+- Add iPhone project favorites so frequently used workspaces can be pinned above the full project list.
+- Reuse the searchable model picker from Session settings so long model lists stay manageable.
+- Add quick prompt chips and a full-screen composer for longer iPhone prompts, with per-bridge draft persistence.
+- Add editable saved quick prompts on iPhone, including local persistence, edit, delete, and reorder controls.
+- Add saved bridge renaming on iPhone so multiple paired Macs can be labeled clearly.
+- Add search to the saved bridge switcher for multi-PC setups.
+- Add queue count diagnostics, collapsed queue UI, composer status chips, attachment thumbnails, and collapsed long transcript bubbles.
+- Improve the macOS Control Center Mobile Handoff panel with full prompt expand/copy actions and QR image copy/reveal controls.
+- Add a recommended next-step card to the macOS Control Center and make bridge action buttons adaptive so the layout behaves better at smaller window sizes.
+
+## 0.6.19 - 2026-05-05
+
+- Add a shared pairing URI helper so bridge, doctor, and token rotation QR flows encode pairing payloads consistently.
+- Add `--tls` / `BRIDGE_TLS=1` support to the live bridge QR and doctor pairing QR generation for Nginx/TLS endpoints.
+- Add regression coverage for `tls=0` local pairing and `tls=1` remote TLS pairing payloads.
+
+## 0.6.18 - 2026-05-05
+
+- Include the effective mobile handoff retention count in token-free `bridge.status` diagnostics.
+- Show mobile handoff retention in the iPhone Diagnostics screen and copied diagnostics report.
+- Share the handoff retention bounding helper between the bridge server and handoff store.
+
+## 0.6.17 - 2026-05-05
+
+- Add `BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES` and `--mobile-handoff-max-entries` to tune how many iPhone-authored handoff prompts are retained.
+- Pass the retention setting through the LaunchAgent installer.
+- Add bridge integration coverage for configured mobile handoff retention.
+
+## 0.6.16 - 2026-05-05
+
+- Teach `maludex doctor` to flag pairing token files with less than 32 bytes of token material.
+- Mark short-token repairs as repairable so the Control Center can guide users to rotate the token.
+- Add doctor regression coverage for short token files before bridge status checks run.
+
+## 0.6.15 - 2026-05-05
+
+- Add an iPhone Diagnostics recovery action that opens the app's Settings page when local notifications are denied.
+- Explain that notification permission is required for background approval alerts.
+- Add English/Korean copy coverage for the notification recovery path.
+
+## 0.6.14 - 2026-05-05
+
+- Teach `maludex doctor` to flag LaunchAgents configured with unsafe wildcard bridge hosts such as `0.0.0.0` or `::`.
+- Mark wildcard host repairs as repairable so the Control Center can guide users back to localhost or a specific Tailscale IP.
+- Add doctor regression coverage for unsafe external bind detection before the bridge starts.
+
+## 0.6.13 - 2026-05-05
+
+- Prune the private desktop mobile-handoff inbox to the most recent 200 entries by default.
+- Keep handoff retention files at `0600` after pruning so prompt bodies remain private local state.
+- Add regression coverage for handoff retention ordering and permissions.
+
+## 0.6.12 - 2026-05-05
+
+- Show the iOS local notification authorization status in the in-app Diagnostics screen.
+- Refresh notification authorization state when the app foreground/background state changes.
+- Add English/Korean labels for notification diagnostics so approval-alert issues are easier to debug on-device.
+
+## 0.6.11 - 2026-05-05
+
+- Re-schedule local iOS approval reminders when maludex is sent to the background while approval cards are still pending.
+- Skip duplicate reminder scheduling for approvals that already have a response waiting for bridge confirmation.
+- Document the local-only background notification behavior and its APNs-free limitations.
+
+## 0.6.10 - 2026-05-05
+
+- Show an explicit iPhone approval "waiting for bridge" state after Approve or Deny is tapped.
+- Disable approval action buttons while the bridge is confirming the response, preventing accidental duplicate approval sends.
+- Clear the waiting state consistently on success, failure, disconnect, turn completion, or bridge-side approval resolution.
+
+## 0.6.9 - 2026-05-05
+
+- Keep iPhone approval cards visible until the bridge confirms the approval response, instead of hiding them immediately on tap, and suppress duplicate approval taps while confirmation is pending.
+- Emit replay-safe `approval.responded` / `approval.resolved` bridge events so mobile clients can reconcile approval state.
+- Add integration coverage for approval response confirmation after reconnect-safe approval replay.
+
+## 0.6.8 - 2026-05-05
+
+- Add `scripts/build-control-center-app.sh` to package the SwiftPM macOS Control Center executable as a local `.app` bundle.
+- Add `npm run build:control-center` and `npm run install:control-center` for easier Control Center builds and installs.
+- Verify Control Center app bundle packaging during the local release check.
+- Document opening and installing the generated `maludex Control Center.app` without going through Xcode.
+
+## 0.6.7 - 2026-05-05
+
+- Improve macOS Control Center tool resolution for Node managers such as Volta, asdf, mise, and nvm when launched outside Terminal.
+- Add a managed shell fallback that can bootstrap nvm/asdf/mise before running `node` or `npm`.
+- Document Control Center Node path recovery through automatic discovery and `MALUDEX_NODE_PATH` / `MALUDEX_NPM_PATH` overrides.
+
+## 0.6.6 - 2026-05-05
+
+- Add a Mobile Handoff panel to the macOS Control Center so recent iPhone-authored prompts can be reviewed without terminal commands.
+- Decode handoff inbox JSON in the Control Center core target, including bounded prompt previews and attachment metadata.
+- Keep the handoff panel private/local with an explicit prompt-body warning.
+
+## 0.6.5 - 2026-05-05
+
+- Add English/Korean language switching to the iPhone app, with English as the default.
+- Persist the selected iPhone app language in device state so app relaunches do not reset it.
+- Add English/Korean language switching to the macOS Control Center and preserve it with AppStorage.
+
+## 0.6.4 - 2026-05-05
+
+- Keep Codex approval requests pending when the iPhone is temporarily disconnected instead of immediately declining them.
+- Replay pending approval cards to the next authenticated iPhone reconnect and keep the accepted response wired to Codex.
+- Add regression coverage for reconnect-safe approvals during mobile background/disconnect windows.
+
+## 0.6.3 - 2026-05-05
+
+- Add a private desktop handoff inbox for iPhone-authored prompts so desktop Codex can explicitly recover mobile instructions that were not live-shared into the open desktop conversation.
+- Add `npm run handoff` to print recent mobile handoff entries from the local `0600` inbox.
+- Document that the handoff inbox can contain prompt bodies and must never be committed or shared.
+
+## 0.6.2 - 2026-05-05
+
+- Fix the macOS Control Center app so it can find Homebrew-installed `node` and `npm` when launched from Xcode or Finder.
+- Notify the iPhone user when a Codex approval request arrives while maludex is inactive or backgrounded.
+- Keep foreground approval requests in the in-app approval card without also creating a local notification.
+
 ## 0.6.1 - 2026-05-05
 
 - Compact the iPhone chat header and prompt composer so more transcript content is visible on large phones.

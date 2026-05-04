@@ -4,13 +4,26 @@ import SwiftUI
 
 struct ControlCenterView: View {
     @AppStorage("repoRoot") private var repoRoot = "\(FileManager.default.homeDirectoryForCurrentUser.path)/Documents/maludex"
+    @AppStorage("languageCode") private var languageCode = ControlCenterLanguage.fallback.rawValue
     @State private var report: DoctorReport?
+    @State private var handoffReport: MobileHandoffReport?
     @State private var isBusy = false
+    @State private var isHandoffBusy = false
     @State private var errorMessage: String?
+    @State private var handoffError: String?
     @State private var qrImage: NSImage?
+    @State private var qrImageURL: URL?
 
     private var runner: DoctorRunner {
         DoctorRunner(repoRoot: URL(fileURLWithPath: repoRoot))
+    }
+
+    private var copy: ControlCenterCopy {
+        ControlCenterCopy(languageCode: languageCode)
+    }
+
+    private var actionColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 12)]
     }
 
     var body: some View {
@@ -23,7 +36,9 @@ struct ControlCenterView: View {
                     VStack(spacing: 18) {
                         repoPicker
                         overviewGrid
+                        nextStepPanel
                         actionPanel
+                        handoffPanel
                         issuesPanel
                         qrPanel
                     }
@@ -33,12 +48,13 @@ struct ControlCenterView: View {
         }
         .task {
             await refresh()
+            await refreshHandoff()
         }
-        .alert("maludex Control Center", isPresented: Binding(
+        .alert("maludex \(copy.appSubtitle)", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
-            Button("OK", role: .cancel) { errorMessage = nil }
+            Button(copy.okButton, role: .cancel) { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
         }
@@ -58,18 +74,29 @@ struct ControlCenterView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("maludex")
                     .font(.system(size: 30, weight: .bold, design: .rounded))
-                Text("Control Center")
+                Text(copy.appSubtitle)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
+            Picker(copy.languageLabel, selection: $languageCode) {
+                ForEach(ControlCenterLanguage.allCases) { language in
+                    Text(language.title).tag(language.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 150)
+
             statusBadge
             Button {
-                Task { await refresh() }
+                Task {
+                    await refresh()
+                    await refreshHandoff()
+                }
             } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
+                Label(copy.refreshButton, systemImage: "arrow.clockwise")
             }
             .buttonStyle(.bordered)
             .disabled(isBusy)
@@ -81,7 +108,7 @@ struct ControlCenterView: View {
 
     private var statusBadge: some View {
         let status = report?.status ?? .warning
-        return Label(report?.statusLabel ?? "Checking", systemImage: statusIcon(status))
+        return Label(report.map { copy.statusLabel($0.status) } ?? copy.checkingValue, systemImage: statusIcon(status))
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(statusColor(status))
             .padding(.horizontal, 14)
@@ -93,13 +120,13 @@ struct ControlCenterView: View {
         HStack(spacing: 12) {
             Image(systemName: "folder")
                 .foregroundStyle(Color(red: 0.02, green: 0.45, blue: 0.40))
-            TextField("Repository path", text: $repoRoot)
+            TextField(copy.repositoryPathPlaceholder, text: $repoRoot)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13, design: .monospaced))
             Button {
                 chooseRepo()
             } label: {
-                Label("Choose", systemImage: "folder.badge.gearshape")
+                Label(copy.chooseButton, systemImage: "folder.badge.gearshape")
             }
             .buttonStyle(.bordered)
         }
@@ -109,33 +136,71 @@ struct ControlCenterView: View {
 
     private var overviewGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-            MetricCard(title: "Bridge", value: report?.bridge?.reachable == true ? "Reachable" : "Offline", symbol: "network", tint: statusColor(report?.status ?? .warning))
-            MetricCard(title: "Endpoint", value: report?.endpoint ?? "Checking", symbol: "point.3.connected.trianglepath.dotted", tint: Color(red: 0.02, green: 0.45, blue: 0.40))
-            MetricCard(title: "Version", value: versionText, symbol: "tag", tint: Color(red: 0.72, green: 0.41, blue: 0.18))
+            MetricCard(title: copy.bridgeTitle, value: report?.bridge?.reachable == true ? copy.reachableValue : copy.offlineValue, symbol: "network", tint: statusColor(report?.status ?? .warning))
+            MetricCard(title: copy.endpointTitle, value: report?.endpoint ?? copy.checkingValue, symbol: "point.3.connected.trianglepath.dotted", tint: Color(red: 0.02, green: 0.45, blue: 0.40))
+            MetricCard(title: copy.versionTitle, value: versionText, symbol: "tag", tint: Color(red: 0.72, green: 0.41, blue: 0.18))
         }
+    }
+
+    private var nextStepPanel: some View {
+        HStack(spacing: 14) {
+            Image(systemName: report?.status == .healthy ? "checkmark.seal.fill" : "arrow.forward.circle.fill")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(statusColor(report?.status ?? .warning))
+                .frame(width: 44, height: 44)
+                .background(statusColor(report?.status ?? .warning).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(copy.nextStepTitle)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.secondary)
+                Text(nextStepTitle)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                if let summary = report?.summary {
+                    Text(summary)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer(minLength: 12)
+
+            if let action = report?.primaryAction, action != "none" {
+                Button {
+                    Task { await performPrimaryAction(action) }
+                } label: {
+                    Label(copy.recommendedActionTitle(action), systemImage: "bolt.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isBusy)
+            }
+        }
+        .padding(18)
+        .background { panelBackground }
     }
 
     private var actionPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Bridge Actions")
+            Text(copy.bridgeActionsTitle)
                 .font(.system(size: 18, weight: .bold))
-            HStack(spacing: 12) {
-                ActionButton(title: "Repair", icon: "wrench.and.screwdriver", tint: Color(red: 0.02, green: 0.45, blue: 0.40), disabled: isBusy) {
+            LazyVGrid(columns: actionColumns, spacing: 12) {
+                ActionButton(title: copy.repairButton, icon: "wrench.and.screwdriver", tint: Color(red: 0.02, green: 0.45, blue: 0.40), disabled: isBusy) {
                     Task { await perform(.repair) }
                 }
-                ActionButton(title: "Restart", icon: "arrow.triangle.2.circlepath", tint: Color(red: 0.02, green: 0.45, blue: 0.40), disabled: isBusy) {
+                ActionButton(title: copy.restartButton, icon: "arrow.triangle.2.circlepath", tint: Color(red: 0.02, green: 0.45, blue: 0.40), disabled: isBusy) {
                     Task { await perform(.restart) }
                 }
-                ActionButton(title: "Start", icon: "play.fill", tint: Color(red: 0.18, green: 0.49, blue: 0.24), disabled: isBusy) {
+                ActionButton(title: copy.startButton, icon: "play.fill", tint: Color(red: 0.18, green: 0.49, blue: 0.24), disabled: isBusy) {
                     Task { await perform(.start) }
                 }
-                ActionButton(title: "Stop", icon: "stop.fill", tint: Color(red: 0.69, green: 0.22, blue: 0.18), disabled: isBusy) {
+                ActionButton(title: copy.stopButton, icon: "stop.fill", tint: Color(red: 0.69, green: 0.22, blue: 0.18), disabled: isBusy) {
                     Task { await perform(.stop) }
                 }
-                ActionButton(title: "Pair", icon: "qrcode", tint: Color(red: 0.08, green: 0.34, blue: 0.52), disabled: isBusy) {
+                ActionButton(title: copy.pairButton, icon: "qrcode", tint: Color(red: 0.08, green: 0.34, blue: 0.52), disabled: isBusy) {
                     Task { await pairingQR() }
                 }
-                ActionButton(title: "Rotate", icon: "key.fill", tint: Color(red: 0.72, green: 0.41, blue: 0.18), disabled: isBusy) {
+                ActionButton(title: copy.rotateButton, icon: "key.fill", tint: Color(red: 0.72, green: 0.41, blue: 0.18), disabled: isBusy) {
                     Task { await rotateToken() }
                 }
             }
@@ -147,13 +212,13 @@ struct ControlCenterView: View {
     private var issuesPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Diagnostics")
+                Text(copy.diagnosticsTitle)
                     .font(.system(size: 18, weight: .bold))
                 Spacer()
                 Button {
                     copyReport()
                 } label: {
-                    Label("Copy Report", systemImage: "doc.on.doc")
+                    Label(copy.copyReportButton, systemImage: "doc.on.doc")
                 }
                 .buttonStyle(.bordered)
                 .disabled(report == nil)
@@ -179,7 +244,7 @@ struct ControlCenterView: View {
                                 .font(.system(size: 14, weight: .semibold))
                             Spacer()
                             if issue.repairable {
-                                Text("Repairable")
+                                Text(copy.repairableBadge)
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(Color(red: 0.02, green: 0.45, blue: 0.40))
                             }
@@ -197,6 +262,73 @@ struct ControlCenterView: View {
         .background { panelBackground }
     }
 
+    private var handoffPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label(copy.mobileHandoffTitle, systemImage: "iphone.and.arrow.forward")
+                    .font(.system(size: 18, weight: .bold))
+                Spacer()
+                Button {
+                    Task { await refreshHandoff() }
+                } label: {
+                    if isHandoffBusy {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label(copy.refreshButton, systemImage: "arrow.clockwise")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isHandoffBusy)
+            }
+
+            Text(copy.mobileHandoffPrivacyWarning)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color(red: 0.69, green: 0.22, blue: 0.18))
+
+            if let handoffError {
+                Text(handoffError)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(red: 0.69, green: 0.22, blue: 0.18))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+            } else if let handoffReport {
+                if handoffReport.entries.isEmpty {
+                    Text(copy.mobileHandoffEmpty)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(handoffReport.entries) { entry in
+                            HandoffEntryRow(entry: entry, copy: copy)
+                        }
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Text(copy.mobileHandoffFileLabel)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(handoffReport.file)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
+            } else {
+                Text(copy.checkingValue)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(18)
+        .background { panelBackground }
+    }
+
     @ViewBuilder
     private var qrPanel: some View {
         if let qrImage {
@@ -207,14 +339,30 @@ struct ControlCenterView: View {
                     .frame(width: 176, height: 176)
                     .background(.white, in: RoundedRectangle(cornerRadius: 8))
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Pairing QR")
+                    Text(copy.pairingQRTitle)
                         .font(.system(size: 18, weight: .bold))
-                    Text("Treat this QR like a password.")
+                    Text(copy.pairingQRWarning)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Color(red: 0.69, green: 0.22, blue: 0.18))
                     Text(report?.endpoint ?? "")
                         .font(.system(size: 13, design: .monospaced))
                         .foregroundStyle(.secondary)
+
+                    HStack(spacing: 10) {
+                        Button {
+                            copyQRImage()
+                        } label: {
+                            Label(copy.copyQRImageButton, systemImage: "doc.on.doc")
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button {
+                            revealQRImage()
+                        } label: {
+                            Label(copy.revealQRImageButton, systemImage: "finder")
+                        }
+                        .buttonStyle(.bordered)
+                    }
                 }
                 Spacer()
             }
@@ -224,11 +372,17 @@ struct ControlCenterView: View {
     }
 
     private var versionText: String {
-        guard let report else { return "Checking" }
+        guard let report else { return copy.checkingValue }
         if let bridgeVersion = report.bridge?.bridgeVersion {
             return "\(bridgeVersion) / \(report.packageVersion)"
         }
         return report.packageVersion
+    }
+
+    private var nextStepTitle: String {
+        guard let report else { return copy.checkingValue }
+        guard report.primaryAction != "none" else { return copy.readyNextStepTitle }
+        return copy.recommendedActionTitle(report.primaryAction)
     }
 
     private var panelBackground: some View {
@@ -243,9 +397,35 @@ struct ControlCenterView: View {
         }
     }
 
+    private func refreshHandoff() async {
+        isHandoffBusy = true
+        defer { isHandoffBusy = false }
+        do {
+            handoffReport = try await runner.mobileHandoff(limit: 5)
+            handoffError = nil
+        } catch {
+            handoffError = error.localizedDescription
+        }
+    }
+
     private func perform(_ action: ControlCenterAction) async {
         await runBusy {
             report = try await runner.run(action)
+        }
+    }
+
+    private func performPrimaryAction(_ action: String) async {
+        switch action {
+        case "repair":
+            await perform(.repair)
+        case "start":
+            await perform(.start)
+        case "stop":
+            await perform(.stop)
+        case "restart":
+            await perform(.restart)
+        default:
+            await refresh()
         }
     }
 
@@ -254,6 +434,7 @@ struct ControlCenterView: View {
         await runBusy {
             report = try await runner.run(.pairingQR(url))
             qrImage = NSImage(contentsOf: url)
+            qrImageURL = url
         }
     }
 
@@ -262,6 +443,7 @@ struct ControlCenterView: View {
         await runBusy {
             report = try await runner.run(.rotateToken(url))
             qrImage = NSImage(contentsOf: url)
+            qrImageURL = url
         }
     }
 
@@ -284,7 +466,10 @@ struct ControlCenterView: View {
         panel.directoryURL = URL(fileURLWithPath: repoRoot)
         if panel.runModal() == .OK, let url = panel.url {
             repoRoot = url.path
-            Task { await refresh() }
+            Task {
+                await refresh()
+                await refreshHandoff()
+            }
         }
     }
 
@@ -296,6 +481,17 @@ struct ControlCenterView: View {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
         }
+    }
+
+    private func copyQRImage() {
+        guard let qrImage else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([qrImage])
+    }
+
+    private func revealQRImage() {
+        guard let qrImageURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([qrImageURL])
     }
 
     private func statusIcon(_ status: DoctorStatus) -> String {
@@ -318,6 +514,104 @@ struct ControlCenterView: View {
         case .error:
             Color(red: 0.69, green: 0.22, blue: 0.18)
         }
+    }
+}
+
+private struct HandoffEntryRow: View {
+    let entry: MobileHandoffEntry
+    let copy: ControlCenterCopy
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(entry.kind)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color(red: 0.02, green: 0.45, blue: 0.40))
+                Text(entry.createdAt)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(copy.mobileHandoffThreadLabel) \(entry.shortThreadId)")
+                    .font(.caption.monospaced().weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(isExpanded ? entry.prompt : entry.promptPreview())
+                .font(.system(size: 14, weight: .medium))
+                .lineLimit(isExpanded ? nil : 4)
+                .textSelection(.enabled)
+
+            HStack(spacing: 10) {
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    Label(isExpanded ? copy.collapsePromptButton : copy.expandPromptButton, systemImage: isExpanded ? "chevron.up" : "chevron.down")
+                }
+                .buttonStyle(.borderless)
+
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(entry.prompt, forType: .string)
+                } label: {
+                    Label(copy.copyPromptButton, systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color(red: 0.02, green: 0.45, blue: 0.40))
+
+            HStack(spacing: 12) {
+                if let cwd = entry.cwd, !cwd.isEmpty {
+                    HandoffMetadataChip(label: copy.mobileHandoffCwdLabel, value: cwd)
+                }
+                if let model = entry.model, !model.isEmpty {
+                    HandoffMetadataChip(label: copy.mobileHandoffModelLabel, value: model)
+                }
+                if !entry.attachments.isEmpty {
+                    HandoffMetadataChip(
+                        label: copy.mobileHandoffAttachmentsLabel,
+                        value: "\(entry.attachments.count)"
+                    )
+                }
+            }
+
+            if !entry.attachments.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(entry.attachments) { attachment in
+                        Label(
+                            "\(attachment.filename) · \(attachment.kind) · \(ByteCountFormatter.string(fromByteCount: Int64(attachment.bytes), countStyle: .file))",
+                            systemImage: attachment.kind == "image" ? "photo" : "doc"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct HandoffMetadataChip: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+        }
+        .font(.caption.weight(.semibold))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.white.opacity(0.55), in: Capsule())
     }
 }
 
@@ -361,8 +655,10 @@ private struct ActionButton: View {
                     .font(.system(size: 20, weight: .semibold))
                 Text(title)
                     .font(.system(size: 12, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
             }
-            .frame(width: 104, height: 76)
+            .frame(maxWidth: .infinity, minHeight: 76)
         }
         .buttonStyle(.plain)
         .foregroundStyle(tint)

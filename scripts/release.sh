@@ -86,8 +86,10 @@ node scripts/extract-release-notes.mjs "$version" CHANGELOG.md >/tmp/maludex-rel
 npm ci
 npm run build
 npm test
+bash -n scripts/build-control-center-app.sh
 swift test --package-path macos/MaludexControlCenter
 swift build --package-path macos/MaludexControlCenter
+npm run build:control-center
 
 swiftc -parse-as-library \
   ios/CodexRemoteBridge/Sources/CodexRemoteBridge/JSONValue.swift \

@@ -12,6 +12,38 @@ struct ClientModelsTests {
         require(project?.id == "/Users/example/App", "project id should be the path")
         require(project?.name == "App", "project name should decode")
         require(project?.source == "recent", "project source should decode")
+        require(AppLanguage.fallback == .english, "app language should default to English")
+        require(AppLanguage(rawValue: "ko")?.title == "한국어", "Korean language option should be available")
+        require(AppCopy(language: .english).settingsTitle == "Settings", "English UI copy should be available")
+        require(AppCopy(language: .korean).settingsTitle == "설정", "Korean UI copy should be available")
+        require(AppCopy(language: .english).approvalRespondingTitle == "Waiting for bridge", "approval confirmation copy should be available")
+        require(AppCopy(language: .korean).approvalRespondingTitle == "브릿지 확인 대기", "Korean approval confirmation copy should be available")
+        require(AppCopy(language: .english).searchChatsTitle == "Search chats", "chat search copy should be available")
+        require(AppCopy(language: .korean).noChatsTitle == "채팅을 찾을 수 없습니다", "Korean empty chat copy should be available")
+        require(AppCopy(language: .english).searchProjectsTitle == "Search projects", "project search copy should be available")
+        require(AppCopy(language: .english).favoriteProjectsTitle == "Favorites", "favorite project copy should be available")
+        require(AppCopy(language: .korean).unfavoriteProjectTitle == "즐겨찾기 해제", "Korean project favorite copy should be available")
+        require(AppCopy(language: .english).searchModelsTitle == "Search models", "model search copy should be available")
+        require(AppCopy(language: .korean).noModelsTitle == "모델을 찾을 수 없습니다", "Korean empty model copy should be available")
+        require(AppCopy(language: .korean).bridgeDefaultModelDetail == "브릿지 기본 모델", "Korean default model detail should be available")
+        require(AppCopy(language: .english).quickPromptsTitle == "Quick prompts", "quick prompt copy should be available")
+        require(AppCopy(language: .korean).quickPromptsTitle == "빠른 프롬프트", "Korean quick prompt copy should be available")
+        require(AppCopy(language: .english).manageQuickPromptsTitle == "Manage quick prompts", "quick prompt management copy should be available")
+        require(AppCopy(language: .korean).saveQuickPromptTitle == "프롬프트 저장", "Korean quick prompt save copy should be available")
+        require(AppCopy(language: .english).renameBridgeTitle == "Rename bridge", "bridge rename copy should be available")
+        require(AppCopy(language: .korean).bridgeNamePlaceholder == "브릿지 이름", "Korean bridge name placeholder should be available")
+        require(AppCopy(language: .english).expandComposerTitle == "Expand composer", "expanded composer copy should be available")
+        require(AppCopy(language: .korean).composerTitle == "프롬프트 작성", "Korean composer title should be available")
+        require(AppCopy(language: .english).notificationStatusTitle("authorized") == "Authorized", "notification status copy should be available")
+        require(AppCopy(language: .korean).notificationStatusTitle("denied") == "거부됨", "Korean notification status copy should be available")
+        require(AppCopy(language: .english).openAppSettingsTitle == "Open iPhone Settings", "notification settings recovery copy should be available")
+        require(AppCopy(language: .korean).notificationsBlockedTitle == "알림이 차단됨", "Korean notification recovery copy should be available")
+        require(AppCopy(language: .english).mobileHandoffRetentionTitle == "Mobile handoff retention", "handoff retention copy should be available")
+        require(AppCopy(language: .english).queuedPromptsTitle == "Queued prompts", "queued prompt diagnostics copy should be available")
+        require(AppCopy(language: .korean).queuedPromptsTitle == "대기 중 프롬프트", "Korean queued prompt diagnostics copy should be available")
+        require(AppCopy(language: .english).searchConversationTitle == "Search conversation", "conversation search copy should be available")
+        require(AppCopy(language: .korean).noSearchResultsTitle == "검색 결과 없음", "Korean empty search copy should be available")
+        require(AppCopy(languageCode: "bad").settingsTitle == "Settings", "invalid language code should fall back to English")
 
         let queueItem = PromptQueueItem(json: [
             "id": .string("queue-1"),
@@ -39,6 +71,16 @@ struct ClientModelsTests {
         require(model?.supportsImages == true, "model should expose image support")
         require(model?.supportedReasoningEfforts == ["low", "medium", "high"], "model should expose supported intelligence levels")
         require(model?.defaultReasoningEffort == "medium", "model should expose default intelligence level")
+
+        let englishTemplates = PromptTemplate.builtIn(language: .english)
+        require(englishTemplates.count >= 4, "built-in quick prompts should be available")
+        require(englishTemplates.first?.id == "review", "review should be the first quick prompt")
+        require(englishTemplates.first?.prompt.contains("Review the current changes") == true, "English quick prompt text should be useful")
+        let koreanTemplates = PromptTemplate.builtIn(language: .korean)
+        require(koreanTemplates.first?.title == "리뷰", "Korean quick prompt title should be localized")
+        require(koreanTemplates.first?.prompt.contains("현재 변경사항") == true, "Korean quick prompt text should be localized")
+        let customTemplate = PromptTemplate(id: "custom-ship", title: "Ship", prompt: "Prepare a release-ready summary.", systemImage: "paperplane")
+        require(PromptTemplate.mergedBuiltIns(language: .english, custom: [customTemplate]).last == customTemplate, "custom quick prompts should appear after built-ins")
 
         let chat = ChatThreadOption(json: [
             "id": .string("thread-1"),
@@ -82,6 +124,28 @@ struct ClientModelsTests {
         require(messageRelativeTime(from: Date(timeIntervalSince1970: 880), now: now) == "2분 전", "message time should show minutes")
         require(messageRelativeTime(from: Date(timeIntervalSince1970: 1_000 - 7_200), now: now) == "2시간 전", "message time should show hours")
         require(messageRelativeTime(from: Date(timeIntervalSince1970: 1_000 - 172_800), now: now) == "2일 전", "message time should show days")
+
+        let searchableEntries = [
+            TranscriptEntry(role: .user, text: "Please inspect the release checklist."),
+            TranscriptEntry(
+                role: .assistant,
+                text: "The build passed.",
+                attachments: [
+                    TranscriptAttachment(kind: .file, filename: "release-notes.md", mimeType: "text/markdown", byteCount: 10)
+                ]
+            ),
+            TranscriptEntry(role: .system, text: "Thread opened")
+        ]
+        let textMatches = transcriptSearchResults(entries: searchableEntries, query: "release")
+        require(textMatches.count == 2, "transcript search should match text and attachment filenames")
+        require(textMatches.first?.role == .user, "transcript search should preserve matching entry role")
+        require(textMatches.first?.preview.contains("release checklist") == true, "transcript search should expose a readable preview")
+        require(transcriptSearchResults(entries: searchableEntries, query: "   ").isEmpty, "empty transcript search should not return results")
+        let longSearchHit = TranscriptEntry(role: .assistant, text: String(repeating: "Search result context. ", count: 40))
+        require(transcriptEntryCanCollapse(longSearchHit), "long transcript entries should collapse by default")
+        require(transcriptEntryIsCollapsed(longSearchHit, userExpanded: false, forceExpanded: false), "long transcript entries should remain collapsed until expanded")
+        require(!transcriptEntryIsCollapsed(longSearchHit, userExpanded: false, forceExpanded: true), "search-selected transcript entries should be forced open")
+        require(!transcriptEntryIsCollapsed(longSearchHit, userExpanded: true, forceExpanded: false), "manually expanded transcript entries should stay open")
 
         let attachment = MobileAttachment(
             kind: .file,
@@ -191,6 +255,18 @@ struct ClientModelsTests {
             mobileNotificationIntent(type: "codex.event", method: "item/agentMessage/delta", params: [:], approvalId: nil) == nil,
             "streaming deltas should not create local notifications"
         )
+        require(
+            shouldScheduleMobileNotification(type: "approval.requested", appIsActive: false),
+            "approval notifications should be scheduled while the app is backgrounded"
+        )
+        require(
+            !shouldScheduleMobileNotification(type: "approval.requested", appIsActive: true),
+            "approval notifications should not be scheduled while the approval card is already visible"
+        )
+        require(
+            shouldScheduleMobileNotification(type: "codex.event", appIsActive: true),
+            "non-approval notifications should preserve existing scheduling behavior"
+        )
 
         let diagnostics = BridgeDiagnostics(json: [
             "bridgeVersion": .string("0.4.3"),
@@ -203,6 +279,7 @@ struct ClientModelsTests {
             "connectedClient": .bool(true),
             "eventBufferSize": .number(12),
             "activeTurnCount": .number(1),
+            "promptQueueCount": .number(3),
             "activeTurns": .array([
                 .object([
                     "threadId": .string("thread-1"),
@@ -210,6 +287,7 @@ struct ClientModelsTests {
                 ])
             ]),
             "pendingApprovalCount": .number(0),
+            "mobileHandoffMaxEntries": .number(50),
             "pendingApprovals": .array([
                 .object([
                     "approvalId": .string("approval-1"),
@@ -222,8 +300,12 @@ struct ClientModelsTests {
         require(diagnostics?.bridgeVersion == "0.4.3", "diagnostics should decode bridge version")
         require(diagnostics?.endpoint == "wss://maludex.example.com:443", "diagnostics should expose endpoint")
         require(diagnostics?.activeTurns.first?.threadId == "thread-1", "diagnostics should decode active turn details")
+        require(diagnostics?.promptQueueCount == 3, "diagnostics should decode queued prompt count")
         require(diagnostics?.pendingApprovals.first?.approvalId == "approval-1", "diagnostics should decode pending approval details")
+        require(diagnostics?.mobileHandoffMaxEntries == 50, "diagnostics should decode handoff retention metadata")
         require(diagnostics?.diagnosticReport.contains("token") == false, "diagnostics report should not include bearer token material")
+        require(diagnostics?.diagnosticReport.contains("mobileHandoffMaxEntries: 50") == true, "diagnostics report should include handoff retention metadata")
+        require(diagnostics?.diagnosticReport.contains("promptQueueCount: 3") == true, "diagnostics report should include prompt queue count")
         require(diagnostics?.diagnosticReport.contains("thread-1") == true, "diagnostics report should include safe thread metadata")
         require(diagnostics?.diagnosticReport.contains("bridgeVersion: 0.4.3") == true, "diagnostics report should be copyable")
 
@@ -238,9 +320,11 @@ struct ClientModelsTests {
             selectedReasoningEffort: "high",
             selectedApprovalPolicy: "on-failure",
             selectedSandbox: "workspace-write",
+            languageCode: AppLanguage.korean.rawValue,
             autoCompactEnabled: false,
             autoCompactTokenLimit: 90000,
             threadId: "thread-1",
+            promptDraft: "unfinished mobile prompt",
             lastEventId: 42,
             transcript: [
                 TranscriptEntry(
@@ -270,9 +354,11 @@ struct ClientModelsTests {
         require(restoredSnapshot?.selectedReasoningEffort == "high", "selected intelligence should restore")
         require(restoredSnapshot?.selectedApprovalPolicy == "on-failure", "selected approval policy should restore")
         require(restoredSnapshot?.selectedSandbox == "workspace-write", "selected sandbox should restore")
+        require(restoredSnapshot?.languageCode == AppLanguage.korean.rawValue, "selected language should restore")
         require(restoredSnapshot?.autoCompactEnabled == false, "auto compact toggle should restore")
         require(restoredSnapshot?.autoCompactTokenLimit == 90000, "auto compact token limit should restore")
         require(restoredSnapshot?.threadId == "thread-1", "thread id should restore")
+        require(restoredSnapshot?.promptDraft == "unfinished mobile prompt", "prompt draft should restore")
         require(restoredSnapshot?.lastEventId == 42, "last event id should restore")
         require(restoredSnapshot?.transcript.first?.text == "saved prompt", "transcript should restore")
         require(restoredSnapshot?.transcript.first?.attachments.first?.filename == "notes.pdf", "transcript attachments should restore")
@@ -288,9 +374,11 @@ struct ClientModelsTests {
             selectedReasoningEffort: "medium",
             selectedApprovalPolicy: "on-request",
             selectedSandbox: "read-only",
+            languageCode: AppLanguage.english.rawValue,
             autoCompactEnabled: true,
             autoCompactTokenLimit: 120000,
             threadId: "thread-desk",
+            promptDraft: "desk draft",
             lastEventId: 7,
             transcript: [TranscriptEntry(role: .assistant, text: "desk history")]
         )
@@ -301,10 +389,27 @@ struct ClientModelsTests {
         require(bridges.map(\.label).contains("Desk PC"), "second bridge label should be stored")
         require(try! deviceStore.loadPairing()?.host == "100.64.1.3", "latest bridge should become active")
         try! deviceStore.selectBridge(id: bridgeIdentifier(host: "100.64.1.2", port: 8765, usesTLS: false))
+        deviceStore.renameBridge(id: bridgeIdentifier(host: "100.64.1.2", port: 8765, usesTLS: false), label: "Studio Renamed")
+        require(deviceStore.savedBridges().first(where: { $0.id == bridgeIdentifier(host: "100.64.1.2", port: 8765, usesTLS: false) })?.label == "Studio Renamed", "renaming a bridge should persist its label")
+        require(try! deviceStore.loadPairing()?.label == "Studio Renamed", "renamed bridge label should load with the pairing")
         require(try! deviceStore.loadPairing()?.host == "100.64.1.2", "selected bridge should load its token")
         require(deviceStore.loadSnapshot()?.threadId == "thread-1", "switching bridge should restore that bridge session")
+        require(deviceStore.loadSnapshot()?.promptDraft == "unfinished mobile prompt", "switching bridge should restore that bridge draft")
         try! deviceStore.selectBridge(id: bridgeIdentifier(host: "100.64.1.3", port: 9876, usesTLS: false))
         require(deviceStore.loadSnapshot()?.threadId == "thread-desk", "second bridge session should restore independently")
+        require(deviceStore.loadSnapshot()?.promptDraft == "desk draft", "second bridge draft should restore independently")
+        deviceStore.saveCustomPromptTemplate(customTemplate)
+        deviceStore.saveCustomPromptTemplate(PromptTemplate(id: "custom-docs", title: "Docs", prompt: "Update the README.", systemImage: "doc.text"))
+        require(deviceStore.customPromptTemplates().map(\.id) == ["custom-ship", "custom-docs"], "custom prompt templates should persist in insertion order")
+        deviceStore.moveCustomPromptTemplate(id: "custom-docs", direction: -1)
+        require(deviceStore.customPromptTemplates().map(\.id) == ["custom-docs", "custom-ship"], "custom prompt templates should support reordering")
+        deviceStore.deleteCustomPromptTemplate(id: "custom-docs")
+        require(deviceStore.customPromptTemplates().map(\.id) == ["custom-ship"], "custom prompt templates should support deletion")
+        deviceStore.toggleFavoriteProject(path: "/Users/example/Desk")
+        deviceStore.toggleFavoriteProject(path: "/Users/example/App")
+        require(deviceStore.favoriteProjectPaths() == ["/Users/example/Desk", "/Users/example/App"], "favorite projects should persist in selection order")
+        deviceStore.toggleFavoriteProject(path: "/Users/example/Desk")
+        require(deviceStore.favoriteProjectPaths() == ["/Users/example/App"], "favorite projects should be removable")
         try! deviceStore.deleteBridge(id: bridgeIdentifier(host: "100.64.1.3", port: 9876, usesTLS: false))
         require(deviceStore.savedBridges().count == 1, "deleting a bridge should remove it from the switcher")
         require(try! secrets.load(for: tokenStorageKey(forBridgeId: bridgeIdentifier(host: "100.64.1.3", port: 9876, usesTLS: false))) == nil, "deleting a bridge should delete its token")
@@ -325,6 +430,7 @@ struct ClientModelsTests {
             selectedReasoningEffort: "high",
             selectedApprovalPolicy: "on-failure",
             selectedSandbox: "workspace-write",
+            languageCode: AppLanguage.korean.rawValue,
             autoCompactEnabled: false,
             autoCompactTokenLimit: 90000,
             threadId: "thread-stale",

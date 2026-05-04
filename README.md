@@ -5,38 +5,47 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.6.1`
+Current version: `v0.7.2`
 
-maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
+maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs from a polished mobile UI.
 
 The Mac bridge launches `codex app-server` over stdio JSONL and exposes a narrow authenticated WebSocket API for the iPhone app. maludex does **not** expose `codex app-server --listen ws://0.0.0.0`, and v1 has no cloud relay.
 
+## What You Can Do Now
+
+- Pair an iPhone to one or more Macs with a QR capability token.
+- Start, steer, stop, and queue Codex turns from iPhone.
+- Pick projects, create projects, choose models, tune reasoning intelligence, and change permission mode.
+- Stream transcripts with attachments, searchable history, collapsed long bubbles, tap-to-copy text, and approval cards.
+- Keep per-bridge drafts, quick prompts, local transcripts, and mobile handoff history across app restarts.
+- Use the macOS Control Center to repair stale bridge installs, rotate tokens, generate pairing QR codes, inspect diagnostics, and review iPhone-authored handoff prompts.
+
 ## Status
 
-This repository is an MVP. It is useful for private local/Tailscale workflows, but it should not be treated as hardened remote administration software.
+`v0.7.2` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
 
 ## Demo
 
 <p align="center">
-  <img src="media/maludex-simulator-demo.gif" alt="Short iOS Simulator demo of maludex pairing, project controls, streaming transcript, approvals, and bridge switching" width="360">
+  <img src="media/maludex-simulator-demo.gif" alt="maludex v0.7.2 demo covering QR pairing, bridge health, session controls, searchable transcript, approvals, and bridge switching" width="360">
 </p>
 
-A short tour captured from the real SwiftUI app running in iOS Simulator is embedded above. [Watch the MP4 version](media/maludex-simulator-demo.mp4).
+A short `v0.7.2` product tour is embedded above. [Watch the MP4 version](media/maludex-simulator-demo.mp4).
 
 ## Screenshots
 
-| Pair bridge | Connected home | Tune session |
+| Pair bridge | Bridge health | Tune session |
 | --- | --- | --- |
 | <img src="media/screenshots/pairing.png" alt="maludex pairing payload screen" width="160"> | <img src="media/screenshots/connected-home.png" alt="maludex connected home screen" width="160"> | <img src="media/screenshots/session-controls.png" alt="maludex project picker and session controls" width="160"> |
 
-| Stream a turn | Approve command | Switch Macs |
+| Search transcript | Approve command | Switch Macs |
 | --- | --- | --- |
-| <img src="media/screenshots/streaming-turn.png" alt="maludex streaming Codex transcript on iPhone" width="160"> | <img src="media/screenshots/approval-card.png" alt="maludex approval request card for a command" width="160"> | <img src="media/screenshots/bridge-switcher.png" alt="maludex saved Mac bridge switcher" width="160"> |
+| <img src="media/screenshots/streaming-turn.png" alt="maludex searchable transcript and prompt queue on iPhone" width="160"> | <img src="media/screenshots/approval-card.png" alt="maludex approval request card for a command" width="160"> | <img src="media/screenshots/bridge-switcher.png" alt="maludex saved Mac bridge switcher and Control Center status" width="160"> |
 
 ## Features
 
-- SwiftUI iPhone client with QR pairing, camera scanner, connection status, project picker, prompt composer, streaming transcript, approval cards, attachment picker, voice input, and local transcript persistence.
-- SwiftUI macOS Control Center app for bridge health, LaunchAgent repair, restart/start/stop, token rotation, and pairing QR generation.
+- SwiftUI iPhone client with QR pairing, camera scanner, connection status, searchable project/model pickers, project favorites, editable saved quick prompts, prompt composer, streaming transcript, approval cards, attachment picker, voice input, and local transcript persistence.
+- SwiftUI macOS Control Center app for bridge health, recommended next steps, LaunchAgent repair, restart/start/stop, token rotation, pairing QR generation, and desktop review of iPhone-authored handoff prompts.
 - Multiple saved Mac bridges, each with its own Keychain token and per-bridge session state.
 - Node.js + TypeScript Mac bridge that translates between mobile WebSocket messages and Codex JSON-RPC over stdio JSONL.
 - Project listing and project creation under configured roots.
@@ -45,6 +54,7 @@ A short tour captured from the real SwiftUI app running in iOS Simulator is embe
 - Image and file attachments copied into the selected workspace before a turn.
 - Subagent start, manual compact, approval response, and active-turn stop.
 - Diagnostics dashboard with bridge health, Codex status, runtime counters, and token-free copyable reports.
+- Reconnect-safe approval delivery: pending Codex approvals are replayed to the next authenticated iPhone connection instead of being declined immediately.
 - CI and tag-driven GitHub Release automation for safer public releases.
 - Integration tests with a mocked Codex app-server process.
 
@@ -60,9 +70,12 @@ A short tour captured from the real SwiftUI app running in iOS Simulator is embe
 - The bridge defaults to `approvalPolicy: "on-request"` and `sandbox: "read-only"`.
 - The mobile app can request only `read-only` or `workspace-write`; it does not expose `danger-full-access` or `approvalPolicy: "never"`.
 - Prompt bodies are sent to Codex but are not logged by the bridge by default.
+- The iPhone app persists the current prompt draft, saved quick prompts, and recent transcript locally per paired bridge so app restarts do not wipe work in progress. Those local app settings can contain prompt bodies; do not export device backups or diagnostics publicly.
 - Queued mobile prompts are persisted locally so they can resume after a bridge restart. That queue file can contain prompt bodies and attachment references; keep it private, keep its `0600` permissions, and never commit or share it.
+- iPhone-authored prompts are also copied into `~/.codex-iphone-remote-bridge/mobile-handoff.jsonl` with `0600` permissions so a desktop Codex session can explicitly recover what was sent from mobile. This is not a log stream, but it can contain prompt bodies; treat it as private and never commit or share it. The bridge keeps only the most recent 200 handoff entries by default; set `BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES` or `--mobile-handoff-max-entries` to reduce or tune retention.
 - Mobile attachments are copied into the selected workspace under `.codex-mobile-attachments/` with `0600` file permissions. Treat those files as local project data.
 - A paired and unlocked iPhone should be treated as a trusted device. It can view recent transcript content and respond to approval requests.
+- Approval requests are kept pending for mobile reconnects, but v1 has no APNs/cloud push relay. Background notifications are local iOS notifications and can only fire when the app is still able to receive or reconnect to the bridge before the approval timeout. If an approval card is already visible and you background the app, maludex re-schedules a local reminder for that pending approval.
 - Plain `ws://` has no transport encryption by itself. Use localhost or Tailscale. Add TLS and stronger operational controls before considering any public endpoint.
 
 ## Requirements
@@ -121,9 +134,30 @@ Open the standalone Mac app package in Xcode:
 open macos/MaludexControlCenter/Package.swift
 ```
 
-Run the `MaludexControlCenter` scheme. The app reads the redacted doctor JSON from the local repo and can refresh bridge status, repair a stale LaunchAgent path, restart/start/stop the bridge, rotate the pairing token, and display a new pairing QR.
+Run the `MaludexControlCenter` scheme. The app reads the redacted doctor JSON from the local repo and can refresh bridge status, show the recommended next step, repair a stale LaunchAgent path, restart/start/stop the bridge, rotate the pairing token, and display a new pairing QR.
 
 The app never displays the raw bearer token. Pairing QR images are still secrets because they encode the token.
+
+To build a local `.app` bundle without opening Xcode:
+
+```bash
+npm run build:control-center
+open "dist/maludex-control-center/maludex Control Center.app"
+```
+
+To install it into `/Applications` when writable, or `~/Applications`
+otherwise:
+
+```bash
+npm run install:control-center
+```
+
+When launched from Finder or Xcode, macOS apps do not inherit the same shell
+`PATH` as Terminal. The Control Center looks for `node` and `npm` in Homebrew,
+Volta, asdf, mise, nvm, and common local-bin paths, then falls back to a small
+managed shell bootstrap for nvm/asdf/mise. If your setup is unusual, set
+`MALUDEX_NODE_PATH` and `MALUDEX_NPM_PATH` to absolute executable paths before
+launching the app.
 
 ## Optional Nginx Remote Access
 
@@ -179,6 +213,12 @@ For an Nginx/TLS endpoint:
 npm run rotate-token -- --host maludex.example.com --port 443 --tls --name "Studio Mac" --qr-file /tmp/maludex-pairing.png
 ```
 
+You can also generate a TLS pairing QR without rotating the token:
+
+```bash
+npm run doctor -- --pairing-qr --host maludex.example.com --port 443 --tls --qr-file /tmp/maludex-pairing.png
+```
+
 The command replaces the token file with a new `0600` high-entropy token and
 prints or writes a new QR without printing the raw token. A running bridge
 detects the token file change and disconnects the currently paired iPhone; old
@@ -202,6 +242,28 @@ Common recovery paths:
 - `Authentication failed`: forget the saved bridge and scan a fresh QR after token rotation.
 - `Codex not running`: confirm Codex is installed and logged in on the Mac.
 
+## Desktop Handoff
+
+maludex saves iPhone-authored prompts to a private handoff inbox so the desktop
+Codex session can explicitly recover mobile instructions that were sent through
+the bridge but not live-injected into an already open desktop conversation.
+
+The macOS Control Center shows a **Mobile Handoff** panel with the latest
+iPhone-authored requests, prompt previews, metadata, and attachment counts. You
+can expand a handoff card and copy the full prompt for recovery. This panel reads
+the same private inbox file and can display prompt bodies, so do not share
+screenshots or copied output publicly.
+
+```bash
+npm run handoff -- --limit 10
+```
+
+This command prints prompt bodies from
+`~/.codex-iphone-remote-bridge/mobile-handoff.jsonl`. Use it only on your own
+Mac and avoid pasting the output into public issues, logs, or screenshots.
+Set `BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES=50` before installing or starting the
+bridge if you want the inbox to retain fewer prompt bodies.
+
 ## Multiple Macs
 
 Install and run the bridge on every Mac you want to control. Each Mac must have its own token file and QR pairing payload.
@@ -220,12 +282,13 @@ Switching bridges closes the current WebSocket, restores that Mac's saved local 
 - `bridge/test`: integration test with a mock Codex app-server JSON-RPC process.
 - `ios/CodexRemoteBridge`: SwiftUI iOS app.
 - `docs/architecture.md`: component and protocol design.
-- `docs/threat-model.md`: MVP threat model and residual risks.
+- `docs/threat-model.md`: preview threat model and residual risks.
 - `docs/nginx-reverse-proxy.md`: optional TLS reverse-proxy setup for remote access.
 - `scripts/setup-local.sh`: local dependency and build setup.
 - `scripts/install-launch-agent.sh`: macOS LaunchAgent installer.
+- `scripts/build-control-center-app.sh`: builds or installs the macOS Control Center `.app` bundle.
 - `scripts/configure-tailscale-bridge.sh`: private external access setup through Tailscale.
-- `scripts/create-demo-video.sh`: rebuilds the README GIF and MP4 from real iOS Simulator screenshots.
+- `scripts/create-demo-video.sh`: renders the README product-tour screenshots and rebuilds the GIF and MP4.
 
 ## Development
 
@@ -251,11 +314,14 @@ Rebuild the iPhone app from Xcode after pulling iOS changes.
 Release checks and GitHub tag publishing are documented in
 [docs/release.md](docs/release.md).
 
-To rebuild the GIF and MP4 after refreshing screenshots from the real Simulator UI:
+To rebuild the README screenshots, GIF, and MP4 product tour:
 
 ```bash
 ./scripts/create-demo-video.sh
 ```
+
+Set `MALUDEX_DEMO_SKIP_RENDER=1` to rebuild only the GIF/MP4 from existing
+PNG files in `media/screenshots`.
 
 Swift model tests can be compiled and run without opening Xcode:
 
@@ -285,6 +351,7 @@ Do not commit:
 
 - `~/.codex-iphone-remote-bridge/token`
 - `~/.codex-iphone-remote-bridge/prompt-queue.json`
+- `~/.codex-iphone-remote-bridge/mobile-handoff.jsonl`
 - QR images or copied pairing payloads
 - `.codex-mobile-attachments/`
 - Xcode `xcuserdata/` and `*.xcuserstate`

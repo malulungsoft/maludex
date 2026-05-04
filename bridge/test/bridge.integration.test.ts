@@ -8,6 +8,7 @@ import { afterEach, expect, test } from "vitest";
 
 import { BridgeServer } from "../src/bridge-server.js";
 import { createLogger } from "../src/logger.js";
+import { MobileHandoffStore, readMobileHandoffEntries } from "../src/mobile-handoff-store.js";
 import { QueuedWebSocketSender } from "../src/queued-websocket-sender.js";
 import { rotateCapabilityTokenFile } from "../src/auth.js";
 
@@ -69,6 +70,23 @@ function waitForMessage<T extends Record<string, unknown>>(
     }
 
     ws.on("message", onMessage);
+  });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function closeSocket(ws: WebSocket): Promise<void> {
+  return new Promise((resolve) => {
+    if (ws.readyState === WebSocket.CLOSED) {
+      resolve();
+      return;
+    }
+    ws.once("close", () => resolve());
+    ws.close();
   });
 }
 
@@ -151,15 +169,15 @@ test("rotating the token file invalidates old websocket credentials without rest
   const ws = await connect(wsUrl, token);
   await waitForMessage(ws, (message) => message.type === "bridge.ready");
 
-  const rotated = await rotateCapabilityTokenFile(tokenFile);
-  expect(rotated).not.toBe(token);
-  await expect(connect(wsUrl, token)).rejects.toThrow(/unexpected response 401/);
-
   const closed = new Promise<{ code: number; reason: string }>((resolve) => {
     ws.once("close", (code, reason) => {
       resolve({ code, reason: reason.toString() });
     });
   });
+  const rotated = await rotateCapabilityTokenFile(tokenFile);
+  expect(rotated).not.toBe(token);
+  await expect(connect(wsUrl, token)).rejects.toThrow(/unexpected response 401/);
+
   const newWs = await connect(wsUrl, rotated);
   await waitForMessage(newWs, (message) => message.type === "bridge.ready");
   await expect(closed).resolves.toMatchObject({ code: 4001 });
@@ -197,7 +215,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.6.1",
+      bridgeVersion: "0.7.2",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -206,6 +224,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
       connectedClient: true,
       activeTurnCount: 0,
       pendingApprovalCount: 0,
+      mobileHandoffMaxEntries: 200,
       projectRootCount: 1
     }
   });
@@ -298,7 +317,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.6.1"
+    bridgeVersion: "0.7.2"
   });
 
   ws.send(
@@ -363,6 +382,16 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     })
   );
   await waitForMessage(replayWs, (message) => message.id === "mobile-3" && message.ok === true);
+  const approvalResponded = await waitForMessage<Record<string, unknown> & { eventId: number }>(
+    replayWs,
+    (message) => message.type === "approval.responded"
+  );
+  expect(approvalResponded).toMatchObject({
+    type: "approval.responded",
+    approvalId: approval.approvalId,
+    method: "item/commandExecution/requestApproval",
+    decision: "accept"
+  });
 
   replayWs.send(
     JSON.stringify({
@@ -419,6 +448,94 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     params: { threadId: "thread-1", turnId: "turn-1" }
   });
   expect(logs.join("\n")).not.toContain(prompt);
+
+  replayWs.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("keeps approval requests pending while the iPhone reconnects", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const reportFile = path.join(temp, "mock-report.jsonl");
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_REPORT_FILE: reportFile,
+      MOCK_CODEX_DELAY_APPROVAL_MS: "75"
+    },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const wsUrl = `ws://${address.host}:${address.port}`;
+  const ws = await connect(wsUrl, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(
+    JSON.stringify({
+      id: "mobile-offline-thread",
+      type: "thread.start",
+      cwd: temp
+    })
+  );
+  await waitForMessage(ws, (message) => message.id === "mobile-offline-thread");
+
+  ws.send(
+    JSON.stringify({
+      id: "mobile-offline-turn",
+      type: "turn.start",
+      threadId: "thread-1",
+      prompt: "trigger approval while phone is away"
+    })
+  );
+  await waitForMessage(ws, (message) => message.id === "mobile-offline-turn");
+  await closeSocket(ws);
+  await sleep(150);
+
+  const replayWs = await connect(`${wsUrl}?afterEventId=0`, token);
+  await waitForMessage(replayWs, (message) => message.type === "bridge.ready");
+  const replayedApproval = await waitForMessage<Record<string, unknown> & { approvalId: string }>(
+    replayWs,
+    (message) => message.type === "approval.requested" && message.replayed === true,
+    1000
+  );
+  expect(replayedApproval).toMatchObject({
+    approvalId: "approval-1",
+    method: "item/commandExecution/requestApproval"
+  });
+
+  replayWs.send(
+    JSON.stringify({
+      id: "mobile-offline-approval",
+      type: "approval.respond",
+      approvalId: replayedApproval.approvalId,
+      decision: "accept"
+    })
+  );
+  await waitForMessage(replayWs, (message) => message.id === "mobile-offline-approval" && message.ok === true);
+  await waitForMessage(
+    replayWs,
+    (message) => message.type === "approval.responded" && message.approvalId === replayedApproval.approvalId
+  );
+  await waitForMessage(
+    replayWs,
+    (message) => message.type === "codex.event" && message.method === "serverRequest/resolved"
+  );
+
+  const report = await readReport(reportFile);
+  const approvalResponse = report.find((entry) => entry.message.id === "approval-1")?.message;
+  expect(approvalResponse).toMatchObject({
+    id: "approval-1",
+    result: { decision: "accept" }
+  });
 
   replayWs.close();
   await rm(temp, { recursive: true, force: true });
@@ -1314,6 +1431,136 @@ test("steers the active Codex turn with additional mobile input", async () => {
       input: [{ type: "text", text: "prioritize the failing test first", text_elements: [] }]
     }
   });
+
+  ws.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("writes iPhone-authored prompts to a private desktop handoff inbox", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+  const mobileHandoffFile = path.join(temp, "mobile-handoff.jsonl");
+  const prompt = "데스크톱 Codex가 이어받아야 하는 아이폰 지시";
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    mobileHandoffFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_RECENT_CWD: temp
+    },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const ws = await connect(`ws://${address.host}:${address.port}`, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(
+    JSON.stringify({
+      id: "mobile-handoff-turn",
+      type: "turn.start",
+      threadId: "recent-thread-1",
+      prompt,
+      cwd: temp,
+      model: "gpt-5"
+    })
+  );
+  await waitForMessage(ws, (message) => message.id === "mobile-handoff-turn");
+
+  const handoffStat = await stat(mobileHandoffFile);
+  const handoffLines = (await readFile(mobileHandoffFile, "utf8")).trim().split("\n");
+  const entry = JSON.parse(handoffLines[0]) as Record<string, unknown>;
+
+  expect((handoffStat.mode & 0o777).toString(8)).toBe("600");
+  expect(entry).toMatchObject({
+    source: "iphone",
+    kind: "turn.start",
+    threadId: "recent-thread-1",
+    cwd: temp,
+    model: "gpt-5",
+    prompt
+  });
+  expect(JSON.stringify(entry)).not.toContain("dataBase64");
+
+  ws.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("prunes the private desktop handoff inbox to the configured retention limit", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const mobileHandoffFile = path.join(temp, "mobile-handoff.jsonl");
+  const store = new MobileHandoffStore(mobileHandoffFile, 3);
+
+  for (let index = 0; index < 5; index += 1) {
+    await store.record({
+      kind: "turn.start",
+      threadId: `thread-${index}`,
+      prompt: `prompt-${index}`,
+      promptBytes: Buffer.byteLength(`prompt-${index}`),
+      attachments: []
+    });
+  }
+
+  const handoffStat = await stat(mobileHandoffFile);
+  const handoffLines = (await readFile(mobileHandoffFile, "utf8")).trim().split("\n");
+  const recent = await readMobileHandoffEntries(mobileHandoffFile, 10);
+
+  expect((handoffStat.mode & 0o777).toString(8)).toBe("600");
+  expect(handoffLines).toHaveLength(3);
+  expect(recent.map((entry) => entry.prompt)).toEqual(["prompt-4", "prompt-3", "prompt-2"]);
+
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("passes mobile handoff retention from the bridge server options", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+  const mobileHandoffFile = path.join(temp, "mobile-handoff.jsonl");
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    mobileHandoffFile,
+    mobileHandoffMaxEntries: 2,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_RECENT_CWD: temp,
+      MOCK_CODEX_AUTO_COMPLETE_TURN: "1"
+    },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const ws = await connect(`ws://${address.host}:${address.port}`, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  for (let index = 0; index < 3; index += 1) {
+    ws.send(
+      JSON.stringify({
+        id: `handoff-retention-${index}`,
+        type: "turn.start",
+        threadId: `retention-thread-${index}`,
+        prompt: `prompt-${index}`,
+        cwd: temp
+      })
+    );
+    await waitForMessage(ws, (message) => message.id === `handoff-retention-${index}`);
+  }
+
+  const recent = await readMobileHandoffEntries(mobileHandoffFile, 10);
+  expect(recent.map((entry) => entry.prompt)).toEqual(["prompt-2", "prompt-1"]);
 
   ws.close();
   await rm(temp, { recursive: true, force: true });

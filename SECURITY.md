@@ -18,3 +18,5 @@ Please open a private security advisory on GitHub if the repository settings all
 - Use `npm run rotate-token -- --host <host-for-iphone> --port 8765` instead of editing the token file by hand. The command preserves `0600` permissions and avoids printing the raw token.
 - Keep approval mode on request unless you fully understand the local risk.
 - A paired and unlocked iPhone should be treated as a trusted device with access to recent transcript content and approval controls.
+- The iPhone app persists prompt drafts, saved quick prompts, and recent transcript state locally per paired bridge. Treat device backups and screenshots as potentially containing prompt bodies.
+- The desktop handoff inbox and prompt queue can contain prompt bodies. Keep `~/.codex-iphone-remote-bridge/` private and do not paste its contents into public issues.
