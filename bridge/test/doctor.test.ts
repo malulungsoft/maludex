@@ -141,6 +141,47 @@ describe("analyzeDoctorSnapshot", () => {
     );
   });
 
+  test("marks a short pairing token as repairable before status checks", () => {
+    const report = analyzeDoctorSnapshot({
+      repoRoot: "/Users/malulung/Documents/maludex",
+      packageVersion: "0.6.15",
+      launchAgent: {
+        exists: true,
+        plistPath: "/Users/malulung/Library/LaunchAgents/com.maludex.bridge.plist",
+        workingDirectory: "/Users/malulung/Documents/maludex",
+        programArguments: [
+          "/opt/homebrew/bin/node",
+          "/Users/malulung/Documents/maludex/dist/bridge/src/index.js",
+          "--host",
+          "100.75.40.51",
+          "--port",
+          "8765",
+          "--no-qr"
+        ],
+        state: "running"
+      },
+      tokenFile: {
+        path: "/Users/malulung/.codex-iphone-remote-bridge/token",
+        exists: true,
+        mode: "600",
+        isFile: true,
+        bytes: 12
+      }
+    });
+
+    expect(report.status).toBe("error");
+    expect(report.primaryAction).toBe("repair");
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "token_file_too_short",
+          severity: "error",
+          repairable: true
+        })
+      ])
+    );
+  });
+
   test("redacts token-like values from copied diagnostics", () => {
     const report = redactedDoctorReport({
       status: "error",

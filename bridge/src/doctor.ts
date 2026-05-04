@@ -154,6 +154,15 @@ export function analyzeDoctorSnapshot(snapshot: DoctorSnapshot): DoctorReport {
         repairable: true
       });
     }
+    if (typeof snapshot.tokenFile.bytes === "number" && snapshot.tokenFile.bytes < 32) {
+      issues.push({
+        code: "token_file_too_short",
+        severity: "error",
+        title: "Pairing token is too short",
+        detail: `${snapshot.tokenFile.path} must contain at least 32 bytes of token material. Rotate the token before pairing an iPhone.`,
+        repairable: true
+      });
+    }
   }
 
   if (snapshot.bridge) {

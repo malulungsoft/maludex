@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.16 - 2026-05-05
+
+- Teach `maludex doctor` to flag pairing token files with less than 32 bytes of token material.
+- Mark short-token repairs as repairable so the Control Center can guide users to rotate the token.
+- Add doctor regression coverage for short token files before bridge status checks run.
+
 ## 0.6.15 - 2026-05-05
 
 - Add an iPhone Diagnostics recovery action that opens the app's Settings page when local notifications are denied.

@@ -215,7 +215,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.6.15",
+      bridgeVersion: "0.6.16",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -316,7 +316,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.6.15"
+    bridgeVersion: "0.6.16"
   });
 
   ws.send(
