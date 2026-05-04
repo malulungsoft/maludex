@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.1 - 2026-05-05
 
 - Add iPhone transcript search with Korean/English copy, attachment filename matches, and tap-to-scroll results.
 - Expand and briefly highlight long transcript bubbles when opened from iPhone search results.
