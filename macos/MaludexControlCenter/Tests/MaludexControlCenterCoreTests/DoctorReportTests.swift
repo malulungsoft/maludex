@@ -146,6 +146,19 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertEqual(resolved.argumentsPrefix, [])
     }
 
+    func testToolExecutionEnvironmentKeepsResolvedToolDirectoryOnPath() {
+        let tool = ToolExecutable(executable: "/opt/homebrew/bin/node", argumentsPrefix: [])
+        let environment = ToolExecutableResolver.executionEnvironment(
+            for: tool,
+            baseEnvironment: ["PATH": "/usr/bin:/bin", "HOME": "/Users/example"]
+        )
+        let pathItems = environment["PATH"]?.split(separator: ":").map(String.init) ?? []
+
+        XCTAssertEqual(pathItems.first, "/opt/homebrew/bin")
+        XCTAssertTrue(pathItems.contains("/usr/bin"))
+        XCTAssertTrue(pathItems.contains("/bin"))
+    }
+
     func testToolResolverFindsVoltaNodeBeforeShellFallback() {
         let resolved = ToolExecutableResolver.resolve(
             command: "node",

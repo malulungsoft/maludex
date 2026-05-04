@@ -81,13 +81,17 @@ public struct DoctorRunner {
     private func runProcess(
         executable: String,
         arguments: [String],
-        currentDirectory: URL
+        currentDirectory: URL,
+        environment: [String: String]? = nil
     ) async throws -> String {
         try await Task.detached(priority: .userInitiated) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
             process.currentDirectoryURL = currentDirectory
+            if let environment {
+                process.environment = environment
+            }
 
             let stdout = Pipe()
             let stderr = Pipe()
@@ -115,7 +119,8 @@ public struct DoctorRunner {
         return try await runProcess(
             executable: tool.executable,
             arguments: tool.argumentsPrefix + arguments,
-            currentDirectory: currentDirectory
+            currentDirectory: currentDirectory,
+            environment: ToolExecutableResolver.executionEnvironment(for: tool)
         )
     }
 }
@@ -140,6 +145,15 @@ enum ToolExecutableResolver {
     static let managedShellBootstrap = """
     if [ -s "$HOME/.nvm/nvm.sh" ]; then . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1; command -v nvm >/dev/null 2>&1 && nvm use --silent default >/dev/null 2>&1 || true; fi; if [ -s "$HOME/.asdf/asdf.sh" ]; then . "$HOME/.asdf/asdf.sh" >/dev/null 2>&1; fi; if [ -s "$HOME/.local/share/mise/mise.sh" ]; then . "$HOME/.local/share/mise/mise.sh" >/dev/null 2>&1; fi; exec "$@"
     """
+
+    static func executionEnvironment(
+        for tool: ToolExecutable,
+        baseEnvironment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        var environment = baseEnvironment
+        environment["PATH"] = pathValue(including: tool, environment: baseEnvironment)
+        return environment
+    }
 
     static func resolve(
         command: String,
@@ -180,6 +194,40 @@ enum ToolExecutableResolver {
             .split(separator: ":")
             .map(String.init)
             .filter { !$0.isEmpty } ?? []
+    }
+
+    private static func pathValue(including tool: ToolExecutable, environment: [String: String]) -> String {
+        let homeDirectory = environment["HOME"] ?? NSHomeDirectory()
+        var directories: [String] = []
+        if tool.executable.hasPrefix("/") {
+            let toolDirectory = URL(fileURLWithPath: tool.executable).deletingLastPathComponent().path
+            directories.append(toolDirectory)
+        }
+        directories.append(contentsOf: pathDirectories(from: environment["PATH"]))
+        directories.append(contentsOf: defaultCandidatePaths(for: "node", homeDirectory: homeDirectory).map {
+            URL(fileURLWithPath: $0).deletingLastPathComponent().path
+        })
+        directories.append(contentsOf: defaultCandidatePaths(for: "npm", homeDirectory: homeDirectory).map {
+            URL(fileURLWithPath: $0).deletingLastPathComponent().path
+        })
+        directories.append(contentsOf: [
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin"
+        ])
+        return unique(directories).joined(separator: ":")
+    }
+
+    private static func unique(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { value in
+            guard !value.isEmpty, !seen.contains(value) else {
+                return false
+            }
+            seen.insert(value)
+            return true
+        }
     }
 
     private static func defaultCandidatePaths(for command: String, homeDirectory: String?) -> [String] {

@@ -18,6 +18,7 @@ import {
   type TokenFileSnapshot
 } from "./doctor.js";
 import { pairingUriFor } from "./pairing-uri.js";
+import { childProcessFailureMessage } from "./process-error.js";
 
 type DoctorCliOptions = {
   json: boolean;
@@ -442,7 +443,7 @@ Options:
 }
 
 main().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = childProcessFailureMessage(error);
   process.stderr.write(`doctor failed: ${message}\n`);
   process.exit(1);
 });

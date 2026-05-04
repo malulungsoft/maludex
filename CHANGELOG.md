@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.2 - 2026-05-05
+
+- Fix macOS Control Center repair so GUI-launched doctor commands preserve Homebrew/Node tool paths for LaunchAgent reinstall.
+- Show child process stderr/stdout when doctor repair fails instead of only reporting a generic command failure.
+
 ## 0.7.1 - 2026-05-05
 
 - Add iPhone transcript search with Korean/English copy, attachment filename matches, and tap-to-scroll results.
