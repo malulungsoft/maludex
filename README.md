@@ -7,31 +7,40 @@
 
 Current version: `v0.7.2`
 
-maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
+maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs from a polished mobile UI.
 
 The Mac bridge launches `codex app-server` over stdio JSONL and exposes a narrow authenticated WebSocket API for the iPhone app. maludex does **not** expose `codex app-server --listen ws://0.0.0.0`, and v1 has no cloud relay.
 
+## What You Can Do Now
+
+- Pair an iPhone to one or more Macs with a QR capability token.
+- Start, steer, stop, and queue Codex turns from iPhone.
+- Pick projects, create projects, choose models, tune reasoning intelligence, and change permission mode.
+- Stream transcripts with attachments, searchable history, collapsed long bubbles, tap-to-copy text, and approval cards.
+- Keep per-bridge drafts, quick prompts, local transcripts, and mobile handoff history across app restarts.
+- Use the macOS Control Center to repair stale bridge installs, rotate tokens, generate pairing QR codes, inspect diagnostics, and review iPhone-authored handoff prompts.
+
 ## Status
 
-This repository is an MVP. It is useful for private local/Tailscale workflows, but it should not be treated as hardened remote administration software.
+`v0.7.2` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
 
 ## Demo
 
 <p align="center">
-  <img src="media/maludex-simulator-demo.gif" alt="Short iOS Simulator demo of maludex pairing, project controls, streaming transcript, approvals, and bridge switching" width="360">
+  <img src="media/maludex-simulator-demo.gif" alt="maludex v0.7.2 demo covering QR pairing, bridge health, session controls, searchable transcript, approvals, and bridge switching" width="360">
 </p>
 
-A short tour captured from the real SwiftUI app running in iOS Simulator is embedded above. [Watch the MP4 version](media/maludex-simulator-demo.mp4).
+A short `v0.7.2` product tour is embedded above. [Watch the MP4 version](media/maludex-simulator-demo.mp4).
 
 ## Screenshots
 
-| Pair bridge | Connected home | Tune session |
+| Pair bridge | Bridge health | Tune session |
 | --- | --- | --- |
 | <img src="media/screenshots/pairing.png" alt="maludex pairing payload screen" width="160"> | <img src="media/screenshots/connected-home.png" alt="maludex connected home screen" width="160"> | <img src="media/screenshots/session-controls.png" alt="maludex project picker and session controls" width="160"> |
 
-| Stream a turn | Approve command | Switch Macs |
+| Search transcript | Approve command | Switch Macs |
 | --- | --- | --- |
-| <img src="media/screenshots/streaming-turn.png" alt="maludex streaming Codex transcript on iPhone" width="160"> | <img src="media/screenshots/approval-card.png" alt="maludex approval request card for a command" width="160"> | <img src="media/screenshots/bridge-switcher.png" alt="maludex saved Mac bridge switcher" width="160"> |
+| <img src="media/screenshots/streaming-turn.png" alt="maludex searchable transcript and prompt queue on iPhone" width="160"> | <img src="media/screenshots/approval-card.png" alt="maludex approval request card for a command" width="160"> | <img src="media/screenshots/bridge-switcher.png" alt="maludex saved Mac bridge switcher and Control Center status" width="160"> |
 
 ## Features
 
@@ -273,13 +282,13 @@ Switching bridges closes the current WebSocket, restores that Mac's saved local 
 - `bridge/test`: integration test with a mock Codex app-server JSON-RPC process.
 - `ios/CodexRemoteBridge`: SwiftUI iOS app.
 - `docs/architecture.md`: component and protocol design.
-- `docs/threat-model.md`: MVP threat model and residual risks.
+- `docs/threat-model.md`: preview threat model and residual risks.
 - `docs/nginx-reverse-proxy.md`: optional TLS reverse-proxy setup for remote access.
 - `scripts/setup-local.sh`: local dependency and build setup.
 - `scripts/install-launch-agent.sh`: macOS LaunchAgent installer.
 - `scripts/build-control-center-app.sh`: builds or installs the macOS Control Center `.app` bundle.
 - `scripts/configure-tailscale-bridge.sh`: private external access setup through Tailscale.
-- `scripts/create-demo-video.sh`: rebuilds the README GIF and MP4 from real iOS Simulator screenshots.
+- `scripts/create-demo-video.sh`: renders the README product-tour screenshots and rebuilds the GIF and MP4.
 
 ## Development
 
@@ -305,11 +314,14 @@ Rebuild the iPhone app from Xcode after pulling iOS changes.
 Release checks and GitHub tag publishing are documented in
 [docs/release.md](docs/release.md).
 
-To rebuild the GIF and MP4 after refreshing screenshots from the real Simulator UI:
+To rebuild the README screenshots, GIF, and MP4 product tour:
 
 ```bash
 ./scripts/create-demo-video.sh
 ```
+
+Set `MALUDEX_DEMO_SKIP_RENDER=1` to rebuild only the GIF/MP4 from existing
+PNG files in `media/screenshots`.
 
 Swift model tests can be compiled and run without opening Xcode:
 
