@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.6.7`
+Current version: `v0.6.8`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 
@@ -127,6 +127,20 @@ open macos/MaludexControlCenter/Package.swift
 Run the `MaludexControlCenter` scheme. The app reads the redacted doctor JSON from the local repo and can refresh bridge status, repair a stale LaunchAgent path, restart/start/stop the bridge, rotate the pairing token, and display a new pairing QR.
 
 The app never displays the raw bearer token. Pairing QR images are still secrets because they encode the token.
+
+To build a local `.app` bundle without opening Xcode:
+
+```bash
+npm run build:control-center
+open "dist/maludex-control-center/maludex Control Center.app"
+```
+
+To install it into `/Applications` when writable, or `~/Applications`
+otherwise:
+
+```bash
+npm run install:control-center
+```
 
 When launched from Finder or Xcode, macOS apps do not inherit the same shell
 `PATH` as Terminal. The Control Center looks for `node` and `npm` in Homebrew,
@@ -253,6 +267,7 @@ Switching bridges closes the current WebSocket, restores that Mac's saved local 
 - `docs/nginx-reverse-proxy.md`: optional TLS reverse-proxy setup for remote access.
 - `scripts/setup-local.sh`: local dependency and build setup.
 - `scripts/install-launch-agent.sh`: macOS LaunchAgent installer.
+- `scripts/build-control-center-app.sh`: builds or installs the macOS Control Center `.app` bundle.
 - `scripts/configure-tailscale-bridge.sh`: private external access setup through Tailscale.
 - `scripts/create-demo-video.sh`: rebuilds the README GIF and MP4 from real iOS Simulator screenshots.
 

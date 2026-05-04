@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.8 - 2026-05-05
+
+- Add `scripts/build-control-center-app.sh` to package the SwiftPM macOS Control Center executable as a local `.app` bundle.
+- Add `npm run build:control-center` and `npm run install:control-center` for easier Control Center builds and installs.
+- Verify Control Center app bundle packaging during the local release check.
+- Document opening and installing the generated `maludex Control Center.app` without going through Xcode.
+
 ## 0.6.7 - 2026-05-05
 
 - Improve macOS Control Center tool resolution for Node managers such as Volta, asdf, mise, and nvm when launched outside Terminal.
