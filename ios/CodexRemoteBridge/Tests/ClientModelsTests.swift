@@ -184,6 +184,61 @@ struct ClientModelsTests {
         require(!multiStoredMetadata.contains(token), "first raw bearer token should not be stored in metadata")
         require(!multiStoredMetadata.contains(secondToken), "second raw bearer token should not be stored in metadata")
 
+        let stalePreferences = MemoryPreferencesStore()
+        let staleStore = DeviceStateStore(preferences: stalePreferences, secretStore: MemorySecretStore())
+        let firstBridge = SavedBridge(pairing: Pairing(host: "100.64.1.10", port: 8765, token: token, usesTLS: false, label: "Studio"))
+        let activeBridge = SavedBridge(pairing: Pairing(host: "100.64.1.11", port: 8765, token: secondToken, usesTLS: false, label: "Laptop"))
+        let staleTopLevelState = PersistedDeviceState(
+            host: activeBridge.host,
+            port: activeBridge.port,
+            usesTLS: activeBridge.usesTLS,
+            selectedProjectPath: "/Users/example/Stale",
+            selectedModel: "gpt-5.5",
+            selectedReasoningEffort: "high",
+            selectedApprovalPolicy: "on-failure",
+            selectedSandbox: "workspace-write",
+            autoCompactEnabled: false,
+            autoCompactTokenLimit: 90000,
+            threadId: "thread-stale",
+            lastEventId: 99,
+            transcript: [TranscriptEntry(role: .assistant, text: "stale history")],
+            bridges: [firstBridge, activeBridge],
+            activeBridgeId: activeBridge.id,
+            bridgeSessions: [
+                firstBridge.id: PersistedBridgeSession(
+                    selectedProjectPath: "/Users/example/Studio",
+                    selectedModel: "gpt-5.4",
+                    selectedReasoningEffort: "medium",
+                    selectedApprovalPolicy: "on-request",
+                    selectedSandbox: "read-only",
+                    autoCompactEnabled: true,
+                    autoCompactTokenLimit: 120000,
+                    threadId: "thread-studio",
+                    lastEventId: 1,
+                    transcript: [TranscriptEntry(role: .assistant, text: "studio history")],
+                    updatedAt: Date(timeIntervalSince1970: 1)
+                ),
+                activeBridge.id: PersistedBridgeSession(
+                    selectedProjectPath: "/Users/example/Laptop",
+                    selectedModel: "gpt-5.4-mini",
+                    selectedReasoningEffort: "low",
+                    selectedApprovalPolicy: "on-request",
+                    selectedSandbox: "read-only",
+                    autoCompactEnabled: true,
+                    autoCompactTokenLimit: 120000,
+                    threadId: "thread-laptop",
+                    lastEventId: 2,
+                    transcript: [TranscriptEntry(role: .assistant, text: "laptop history")],
+                    updatedAt: Date(timeIntervalSince1970: 2)
+                )
+            ],
+            updatedAt: Date(timeIntervalSince1970: 3)
+        )
+        stalePreferences.setData(try! JSONEncoder().encode(staleTopLevelState), forKey: DeviceStateStore.stateKey)
+        let normalizedStaleSnapshot = staleStore.loadSnapshot()
+        require(normalizedStaleSnapshot?.threadId == "thread-laptop", "active bridge session should override stale top-level thread")
+        require(normalizedStaleSnapshot?.transcript.first?.text == "laptop history", "active bridge transcript should not bleed across pairings")
+
         let legacyEntryJSON = """
         {
           "id": "00000000-0000-0000-0000-000000000001",

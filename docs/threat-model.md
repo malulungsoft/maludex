@@ -27,7 +27,7 @@ There is no cloud relay in this MVP.
 | Unauthenticated device drives Codex | Every WebSocket upgrade requires the bearer capability token. |
 | Codex app-server exposed directly | Bridge launches Codex only with `--listen stdio://`. |
 | Bridge accidentally listens on every interface | Bridge refuses `0.0.0.0` and `::`; use loopback or one Tailscale IP. The Tailscale helper updates the LaunchAgent to one detected `100.x.y.z` address only. |
-| Public internet scans reach the bridge | Do not router-port-forward the bridge. External access is expected to go through Tailscale with the iPhone and Mac in the same tailnet. |
+| Public internet scans reach the bridge | Do not router-port-forward the bridge. Preferred external access is Tailscale with the iPhone and Mac in the same tailnet. If using Nginx, keep the bridge on loopback, terminate TLS at Nginx, preserve bearer auth, and add IP allowlisting, mTLS, or another access layer. |
 | Token checked into the repo | Tokens are loaded from a `0600` file; repo ignores local token-like files and docs warn against committing pairing material. |
 | Token file readable by other users | Bridge refuses token files whose permissions are not exactly `0600`. |
 | Token visible in bridge logs | The QR URI is rendered as a QR code; raw token text is not printed by the CLI logger. |
@@ -39,7 +39,7 @@ There is no cloud relay in this MVP.
 | Project picker leaks too much path metadata | Project listing is limited to configured roots and recent Codex thread working directories, and requires the bearer token. |
 | Chat list leaks private conversation metadata | Chat listing and history loading require the bearer token and are never exposed through unauthenticated WebSocket connections. |
 | Paired iPhone leaks persisted content | iOS stores the capability token in Keychain and stores session metadata plus recent transcript locally; the pairing screen has a `Forget` control to clear this device state. |
-| One paired PC token grants access to another PC | Each saved bridge has a separate Keychain token keyed by bridge endpoint. Switching bridges uses that bridge's token only. |
+| One paired PC token grants access to another PC | Each saved bridge has a separate Keychain token keyed by bridge endpoint. Switching bridges uses that bridge's token only, and local transcript snapshots are restored from the active bridge ID. |
 | Oversized desktop history crashes or disconnects mobile client | `chat.open` strips raw `thread.turns`, bounds transcript entries/bytes, and reports truncation metadata to the iOS client. |
 | Mobile prompt persistence duplicates or leaks content | The bridge first checks recent thread turns before using `thread/inject_items`; it logs only metadata, but the user-authored prompt may be persisted into the selected Codex thread. |
 | Attachment previews leak local content to the paired phone | Only authenticated clients can request chat history; image previews are byte-limited, while documents are represented as metadata cards. Treat a paired iPhone as trusted. |
@@ -54,7 +54,7 @@ There is no cloud relay in this MVP.
 - A compromised iPhone can send prompts and approve requests while connected.
 - A compromised Mac user account can read bridge process memory and the Codex session.
 - QR shoulder-surfing can reveal the token until the token file is rotated.
-- Plain `ws://` has no transport encryption. Use Tailscale or localhost; add TLS and stricter network controls before exposing any public endpoint.
+- Plain `ws://` has no transport encryption. Use Tailscale or localhost; if you expose a domain, terminate TLS with a reverse proxy such as Nginx and add stricter network controls.
 - This MVP has no multi-device identity, token revocation UI, or per-device audit trail.
 - The iOS app persists bridge capability tokens in Keychain. Anyone who can unlock the paired iPhone may access recent transcript content saved by the app and switch among saved PCs.
 - Approval params can include sensitive command paths or filenames because the phone needs them for review.
@@ -66,7 +66,7 @@ There is no cloud relay in this MVP.
 
 - Do not add `codex app-server --listen ws://0.0.0.0` to this project.
 - Do not add a no-token WebSocket mode.
-- Do not router-port-forward the bridge or bind it to a public address without adding TLS, IP allowlisting, token rotation UX, and operational monitoring.
+- Do not router-port-forward the bridge or bind it to a public address. If Nginx is used, the bridge should remain loopback-only and the public endpoint needs TLS, IP allowlisting or mTLS, token rotation UX, and operational monitoring.
 - Do not add `danger-full-access` as a default.
 - Do not expose `approvalPolicy: "never"` or full-access controls in the mobile protocol without a new security review.
 - Do not log prompt bodies by default.
@@ -76,7 +76,8 @@ There is no cloud relay in this MVP.
 
 1. Start on loopback for simulator testing.
 2. Use `scripts/configure-tailscale-bridge.sh` to bind the bridge to a private Tailscale IP for a physical iPhone, including off-Wi-Fi use.
-3. Restart the bridge after pairing demos or whenever the QR code may have been exposed.
-4. Keep approvals on request.
-5. Stop the bridge when not actively using the remote client.
-6. Rotate the token by replacing the token file with a new `0600` high-entropy value.
+3. For Nginx-based access, follow `docs/nginx-reverse-proxy.md` and keep the bridge bound to `127.0.0.1`.
+4. Restart the bridge after pairing demos or whenever the QR code may have been exposed.
+5. Keep approvals on request.
+6. Stop the bridge when not actively using the remote client.
+7. Rotate the token by replacing the token file with a new `0600` high-entropy value.

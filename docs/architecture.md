@@ -9,6 +9,8 @@ maludex lets an iPhone send prompts to Codex running on a nearby or Tailscale-re
 ```mermaid
 flowchart LR
     iPhone["maludex SwiftUI app"] -->|"Bearer-auth WebSocket"| Bridge["maludex Node.js bridge"]
+    iPhone -.->|"optional WSS via Nginx"| Nginx["Nginx TLS reverse proxy"]
+    Nginx -.->|"ws://127.0.0.1:8765"| Bridge
     Bridge -->|"stdio JSONL JSON-RPC"| Codex["codex app-server --listen stdio://"]
     Codex -->|"JSON-RPC notifications and requests"| Bridge
     Bridge -->|"events and approval prompts"| iPhone
@@ -21,7 +23,7 @@ The maludex bridge is a Node.js + TypeScript process in `bridge/src`.
 - Launches Codex with `codex app-server --listen stdio://`.
 - Reads and writes newline-delimited JSON-RPC objects on the child process stdio streams.
 - Hosts an authenticated WebSocket for the iPhone.
-- Refuses wildcard binds and defaults to `127.0.0.1:8765`; external device access should bind to one Mac Tailscale `100.x.y.z` address, not to a public or wildcard interface.
+- Refuses wildcard binds and defaults to `127.0.0.1:8765`; external device access should bind to one Mac Tailscale `100.x.y.z` address, or stay on loopback behind a TLS reverse proxy such as Nginx.
 - Loads the bearer capability token from a `0600` file.
 - Creates a default `~/.codex-iphone-remote-bridge/token` file with `0600` permissions if the CLI is started without `--token-file`.
 - Prints a QR code containing `maludex://pair?host=...&port=...&token=...&tls=0&name=...`; the iOS parser still accepts the older `codex-remote://pair` payload for existing QR screenshots.
@@ -38,11 +40,15 @@ The maludex bridge is a Node.js + TypeScript process in `bridge/src`.
 - Converts resumed thread turns into a narrow mobile transcript format, strips raw `turns` from mobile thread payloads, and truncates very large histories to a bounded recent window.
 - Extracts `localImage` inputs and mobile attachment file lines into transcript attachment metadata. Small local images are included as base64 previews for iOS rendering; large images and documents render as metadata cards.
 - After an iPhone-authored turn completes, the bridge checks recent Codex turns; if the mobile user message is missing, it appends a user `message` item with `thread/inject_items` so reopened desktop history can retain the prompt.
-- The iOS client persists each paired bridge token in Keychain and keeps the last bridge plus per-bridge project, model, intelligence level, permission mode, compaction setting, thread id, replay event id, and recent transcript in local device preferences.
+- The iOS client persists each paired bridge token in Keychain and keeps the last bridge plus per-bridge project, model, intelligence level, permission mode, compaction setting, thread id, replay event id, and recent transcript in local device preferences keyed by bridge ID.
 - Copies mobile attachments into the selected workspace under `.codex-mobile-attachments/` before starting a turn.
 - Logs metadata such as message type, Codex method, ids, prompt byte length, and connection state. It does not log prompt bodies.
 
 `scripts/configure-tailscale-bridge.sh` is the supported helper for private external access. It detects the Mac's Tailscale IPv4 address, updates the LaunchAgent host argument to that single address, restarts the bridge, checks the TCP listener, and writes a pairing QR image outside the repo.
+
+For domain-based remote access, Nginx can terminate TLS and proxy WebSocket
+upgrades to a loopback-only bridge. The bridge still enforces the bearer token
+and must not be exposed directly. See `docs/nginx-reverse-proxy.md`.
 
 ## Codex JSON-RPC
 

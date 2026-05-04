@@ -338,10 +338,10 @@ final class DeviceStateStore {
     }
 
     func loadSnapshot() -> PersistedDeviceState? {
-        guard let data = preferences.data(forKey: Self.stateKey) else {
+        guard loadRawState() != nil else {
             return nil
         }
-        return try? JSONDecoder().decode(PersistedDeviceState.self, from: data)
+        return migratedState()
     }
 
     func saveSnapshot(
@@ -384,7 +384,7 @@ final class DeviceStateStore {
     }
 
     private func migratedState() -> PersistedDeviceState {
-        var state = loadSnapshot() ?? .empty
+        var state = loadRawState() ?? .empty
         if state.bridges.isEmpty, !state.host.isEmpty, state.port > 0 {
             let id = bridgeIdentifier(host: state.host, port: state.port, usesTLS: state.usesTLS)
             let bridge = SavedBridge(
@@ -404,7 +404,24 @@ final class DeviceStateStore {
         if state.activeBridgeId.isEmpty, let first = state.bridges.first {
             state.activeBridgeId = first.id
         }
+        if !state.activeBridgeId.isEmpty {
+            if state.bridgeSessions.isEmpty {
+                state.bridgeSessions[state.activeBridgeId] = state.currentSession
+            } else if state.bridgeSessions[state.activeBridgeId] == nil {
+                state.bridgeSessions[state.activeBridgeId] = .empty
+            }
+            if let activeSession = state.bridgeSessions[state.activeBridgeId] {
+                state.apply(session: activeSession)
+            }
+        }
         return state
+    }
+
+    private func loadRawState() -> PersistedDeviceState? {
+        guard let data = preferences.data(forKey: Self.stateKey) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(PersistedDeviceState.self, from: data)
     }
 
     private func bridgeForLoad(from state: PersistedDeviceState, id requestedId: String?) -> SavedBridge? {

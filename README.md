@@ -1,5 +1,7 @@
 # maludex
 
+Current version: `v0.1.2`
+
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 
 The Mac bridge launches `codex app-server` over stdio JSONL and exposes a narrow authenticated WebSocket API for the iPhone app. maludex does **not** expose `codex app-server --listen ws://0.0.0.0`, and v1 has no cloud relay.
@@ -42,6 +44,7 @@ A short tour captured from the real SwiftUI app running in iOS Simulator is embe
 
 - Use maludex only on networks you control: localhost, the iOS simulator, LAN you trust, or a private Tailscale IP.
 - Do not router-port-forward the bridge to the public internet.
+- If you put Nginx in front of maludex, keep the bridge bound to `127.0.0.1`, terminate TLS at Nginx, preserve the `Authorization` header, and add extra controls such as IP allowlisting, mTLS, or a private access layer. See [Nginx Reverse Proxy For Remote Access](docs/nginx-reverse-proxy.md).
 - The bridge refuses wildcard WebSocket binds such as `0.0.0.0`; bind to `127.0.0.1`, `::1`, or one specific Tailscale IP.
 - Every WebSocket upgrade must include the QR capability token as `Authorization: Bearer <token>`.
 - The token is loaded from a `0600` file. By default the CLI creates `~/.codex-iphone-remote-bridge/token`.
@@ -101,6 +104,15 @@ For a physical iPhone or off-Wi-Fi usage through Tailscale:
 
 That script detects the Mac's Tailscale IPv4 address, updates the LaunchAgent to bind only to that one `100.x.y.z` address, restarts the bridge, and writes a pairing QR image to `/tmp/maludex-pairing.png`.
 
+## Optional Nginx Remote Access
+
+Tailscale remains the recommended private remote-access path. If you need a
+domain-based endpoint, put Nginx in front of a loopback-only bridge and expose
+`wss://your-domain` instead of exposing the bridge directly.
+
+Read the full guide before using this on the internet:
+[docs/nginx-reverse-proxy.md](docs/nginx-reverse-proxy.md).
+
 ## iPhone App
 
 Open `ios/CodexRemoteBridge/CodexRemoteBridge.xcodeproj` in Xcode.
@@ -129,7 +141,7 @@ Pairing options in the app:
 - Paste the pairing payload.
 - Scan each additional Mac's QR to add it to the bridge switcher.
 
-The iOS app stores each bridge token in Keychain. Non-token session state, such as the selected project, active thread, event id, and recent transcript, is stored locally on the device per bridge.
+The iOS app stores each bridge token in Keychain. Non-token session state, such as the selected project, active thread, event id, and recent transcript, is stored locally on the device per bridge ID so histories do not bleed across saved Macs.
 
 ## Multiple Macs
 
@@ -150,6 +162,7 @@ Switching bridges closes the current WebSocket, restores that Mac's saved local 
 - `ios/CodexRemoteBridge`: SwiftUI iOS app.
 - `docs/architecture.md`: component and protocol design.
 - `docs/threat-model.md`: MVP threat model and residual risks.
+- `docs/nginx-reverse-proxy.md`: optional TLS reverse-proxy setup for remote access.
 - `scripts/setup-local.sh`: local dependency and build setup.
 - `scripts/install-launch-agent.sh`: macOS LaunchAgent installer.
 - `scripts/configure-tailscale-bridge.sh`: private external access setup through Tailscale.
