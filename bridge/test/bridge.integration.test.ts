@@ -197,7 +197,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.2.0",
+      bridgeVersion: "0.4.0",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -210,6 +210,57 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     }
   });
   expect(JSON.stringify(response)).not.toContain(token);
+
+  ws.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("reports token-free active turn and approval diagnostics", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+  const prompt = "SECRET diagnostic prompt body";
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    projectRoots: [temp],
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const ws = await connect(`ws://${address.host}:${address.port}`, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(JSON.stringify({ id: "mobile-thread", type: "thread.start", cwd: temp }));
+  await waitForMessage(ws, (message) => message.id === "mobile-thread");
+
+  ws.send(JSON.stringify({ id: "mobile-turn", type: "turn.start", threadId: "thread-1", prompt }));
+  await waitForMessage(ws, (message) => message.id === "mobile-turn");
+  await waitForMessage(ws, (message) => message.type === "approval.requested");
+
+  ws.send(JSON.stringify({ id: "mobile-status-details", type: "bridge.status" }));
+  const response = await waitForMessage<Record<string, unknown>>(ws, (message) => message.id === "mobile-status-details");
+  expect(response).toMatchObject({
+    type: "response",
+    ok: true,
+    result: {
+      activeTurns: [{ threadId: "thread-1", turnId: "turn-1" }],
+      pendingApprovals: [
+        {
+          approvalId: "approval-1",
+          method: "item/commandExecution/requestApproval"
+        }
+      ]
+    }
+  });
+  expect(JSON.stringify(response)).not.toContain(token);
+  expect(JSON.stringify(response)).not.toContain(prompt);
 
   ws.close();
   await rm(temp, { recursive: true, force: true });
@@ -247,7 +298,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.2.0"
+    bridgeVersion: "0.4.0"
   });
 
   ws.send(

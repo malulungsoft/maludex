@@ -139,7 +139,7 @@ struct ClientModelsTests {
             "offline connection errors should explain bridge reachability"
         )
         let diagnostics = BridgeDiagnostics(json: [
-            "bridgeVersion": .string("0.2.0"),
+            "bridgeVersion": .string("0.4.0"),
             "protocolVersion": .number(1),
             "host": .string("maludex.example.com"),
             "port": .number(443),
@@ -149,14 +149,29 @@ struct ClientModelsTests {
             "connectedClient": .bool(true),
             "eventBufferSize": .number(12),
             "activeTurnCount": .number(1),
+            "activeTurns": .array([
+                .object([
+                    "threadId": .string("thread-1"),
+                    "turnId": .string("turn-1")
+                ])
+            ]),
             "pendingApprovalCount": .number(0),
+            "pendingApprovals": .array([
+                .object([
+                    "approvalId": .string("approval-1"),
+                    "method": .string("item/commandExecution/requestApproval")
+                ])
+            ]),
             "projectRootCount": .number(2),
             "uptimeSeconds": .number(42)
         ])
-        require(diagnostics?.bridgeVersion == "0.2.0", "diagnostics should decode bridge version")
+        require(diagnostics?.bridgeVersion == "0.4.0", "diagnostics should decode bridge version")
         require(diagnostics?.endpoint == "wss://maludex.example.com:443", "diagnostics should expose endpoint")
+        require(diagnostics?.activeTurns.first?.threadId == "thread-1", "diagnostics should decode active turn details")
+        require(diagnostics?.pendingApprovals.first?.approvalId == "approval-1", "diagnostics should decode pending approval details")
         require(diagnostics?.diagnosticReport.contains("token") == false, "diagnostics report should not include bearer token material")
-        require(diagnostics?.diagnosticReport.contains("bridgeVersion: 0.2.0") == true, "diagnostics report should be copyable")
+        require(diagnostics?.diagnosticReport.contains("thread-1") == true, "diagnostics report should include safe thread metadata")
+        require(diagnostics?.diagnosticReport.contains("bridgeVersion: 0.4.0") == true, "diagnostics report should be copyable")
 
         let preferences = MemoryPreferencesStore()
         let secrets = MemorySecretStore()

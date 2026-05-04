@@ -259,7 +259,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.2.0"
+let maludexClientVersion = "0.4.0"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
@@ -322,6 +322,34 @@ func userFacingConnectionError(_ message: String) -> String {
 }
 
 struct BridgeDiagnostics: Equatable {
+    struct ActiveTurn: Equatable {
+        let threadId: String
+        let turnId: String
+
+        init?(json: [String: JSONValue]) {
+            guard let threadId = json["threadId"]?.stringValue,
+                  let turnId = json["turnId"]?.stringValue else {
+                return nil
+            }
+            self.threadId = threadId
+            self.turnId = turnId
+        }
+    }
+
+    struct PendingApproval: Equatable {
+        let approvalId: String
+        let method: String
+
+        init?(json: [String: JSONValue]) {
+            guard let approvalId = json["approvalId"]?.stringValue,
+                  let method = json["method"]?.stringValue else {
+                return nil
+            }
+            self.approvalId = approvalId
+            self.method = method
+        }
+    }
+
     let bridgeVersion: String
     let protocolVersion: Int
     let minClientProtocolVersion: Int
@@ -334,7 +362,9 @@ struct BridgeDiagnostics: Equatable {
     let eventBufferSize: Int
     let eventReplayLimit: Int
     let activeTurnCount: Int
+    let activeTurns: [ActiveTurn]
     let pendingApprovalCount: Int
+    let pendingApprovals: [PendingApproval]
     let projectRootCount: Int
     let resumedThreadCount: Int
     let uptimeSeconds: Int
@@ -362,7 +392,15 @@ struct BridgeDiagnostics: Equatable {
         self.eventBufferSize = json["eventBufferSize"]?.intValue ?? 0
         self.eventReplayLimit = json["eventReplayLimit"]?.intValue ?? 0
         self.activeTurnCount = json["activeTurnCount"]?.intValue ?? 0
+        self.activeTurns = json["activeTurns"]?.arrayValue?.compactMap { value in
+            guard let object = value.objectValue else { return nil }
+            return ActiveTurn(json: object)
+        } ?? []
         self.pendingApprovalCount = json["pendingApprovalCount"]?.intValue ?? 0
+        self.pendingApprovals = json["pendingApprovals"]?.arrayValue?.compactMap { value in
+            guard let object = value.objectValue else { return nil }
+            return PendingApproval(json: object)
+        } ?? []
         self.projectRootCount = json["projectRootCount"]?.intValue ?? 0
         self.resumedThreadCount = json["resumedThreadCount"]?.intValue ?? 0
         self.uptimeSeconds = json["uptimeSeconds"]?.intValue ?? 0
@@ -382,7 +420,9 @@ struct BridgeDiagnostics: Equatable {
             "eventBufferSize: \(eventBufferSize)",
             "eventReplayLimit: \(eventReplayLimit)",
             "activeTurnCount: \(activeTurnCount)",
+            "activeTurns: \(activeTurns.map { "\($0.threadId)/\($0.turnId)" }.joined(separator: ", "))",
             "pendingApprovalCount: \(pendingApprovalCount)",
+            "pendingApprovals: \(pendingApprovals.map { "\($0.approvalId)/\($0.method)" }.joined(separator: ", "))",
             "projectRootCount: \(projectRootCount)",
             "resumedThreadCount: \(resumedThreadCount)",
             "uptimeSeconds: \(uptimeSeconds)"

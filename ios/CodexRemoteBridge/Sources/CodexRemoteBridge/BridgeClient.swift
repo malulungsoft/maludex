@@ -384,8 +384,8 @@ final class BridgeClient: ObservableObject {
             "id": .string(nextMessageId(prefix: "ios-open-chat")),
             "type": .string("chat.open"),
             "threadId": .string(threadId),
-            "turnLimit": .number(30),
-            "transcriptByteLimit": .number(768 * 1024)
+            "turnLimit": .number(30.0),
+            "transcriptByteLimit": .number(Double(768 * 1024))
         ]
         if !selectedModel.isEmpty {
             body["model"] = .string(selectedModel)
@@ -408,8 +408,8 @@ final class BridgeClient: ObservableObject {
             "type": .string("chat.history"),
             "threadId": .string(threadId),
             "cursor": .string(transcriptCursor),
-            "limit": .number(30),
-            "transcriptByteLimit": .number(768 * 1024)
+            "limit": .number(30.0),
+            "transcriptByteLimit": .number(Double(768 * 1024))
         ])
     }
 

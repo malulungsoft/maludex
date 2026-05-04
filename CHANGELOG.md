@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 - 2026-05-04
+
+- Add GitHub Actions CI for Node, TypeScript, Swift model tests, Swift transcript tests, and Xcode simulator builds.
+- Add tag-driven GitHub Release automation that extracts notes from `CHANGELOG.md`.
+- Add `scripts/release.sh` and `npm run release:check` for repeatable local release verification.
+- Extend bridge diagnostics with token-free active turn and pending approval details.
+- Show active turn and pending approval diagnostics in the iPhone app.
+
 ## 0.2.0 - 2026-05-04
 
 - Add `bridge.status` diagnostics with bridge version, Codex process status, token-file validity, runtime counters, and uptime.

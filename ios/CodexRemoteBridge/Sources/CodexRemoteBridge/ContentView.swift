@@ -945,6 +945,36 @@ private struct DiagnosticsSheet: View {
                         DiagnosticRow(title: "Uptime", value: durationText(diagnostics.uptimeSeconds))
                     }
 
+                    if !diagnostics.activeTurns.isEmpty {
+                        Section("Active Turns") {
+                            ForEach(diagnostics.activeTurns, id: \.turnId) { turn in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(turn.turnId)
+                                        .font(.subheadline.weight(.semibold))
+                                    Text(turn.threadId)
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                        .textSelection(.enabled)
+                                }
+                            }
+                        }
+                    }
+
+                    if !diagnostics.pendingApprovals.isEmpty {
+                        Section("Pending Approvals") {
+                            ForEach(diagnostics.pendingApprovals, id: \.approvalId) { approval in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(approval.method)
+                                        .font(.subheadline.weight(.semibold))
+                                    Text(approval.approvalId)
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                        .textSelection(.enabled)
+                                }
+                            }
+                        }
+                    }
+
                     Section("Report") {
                         Text(diagnostics.diagnosticReport)
                             .font(.caption.monospaced())

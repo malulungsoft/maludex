@@ -1,6 +1,11 @@
 # maludex
 
-Current version: `v0.2.0`
+[![CI](https://github.com/malulungsoft/maludex/actions/workflows/ci.yml/badge.svg)](https://github.com/malulungsoft/maludex/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/malulungsoft/maludex)](https://github.com/malulungsoft/maludex/releases)
+[![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
+
+Current version: `v0.4.0`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 
@@ -39,6 +44,7 @@ A short tour captured from the real SwiftUI app running in iOS Simulator is embe
 - Image and file attachments copied into the selected workspace before a turn.
 - Subagent start, manual compact, approval response, and active-turn stop.
 - Diagnostics dashboard with bridge health, Codex status, runtime counters, and token-free copyable reports.
+- CI and tag-driven GitHub Release automation for safer public releases.
 - Integration tests with a mocked Codex app-server process.
 
 ## Security Warnings
@@ -214,6 +220,22 @@ npm install
 npm run build
 npm test
 ```
+
+## Upgrade
+
+```bash
+git pull --ff-only
+npm ci
+npm run build
+launchctl kickstart -k "gui/$(id -u)/com.maludex.bridge"
+```
+
+Rebuild the iPhone app from Xcode after pulling iOS changes.
+
+## Release
+
+Release checks and GitHub tag publishing are documented in
+[docs/release.md](docs/release.md).
 
 To rebuild the GIF and MP4 after refreshing screenshots from the real Simulator UI:
 

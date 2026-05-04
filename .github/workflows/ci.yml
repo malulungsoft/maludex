@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - codex/open-source-release
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+      - name: Swift client model tests
+        run: |
+          swiftc -parse-as-library \
+            ios/CodexRemoteBridge/Sources/CodexRemoteBridge/JSONValue.swift \
+            ios/CodexRemoteBridge/Sources/CodexRemoteBridge/TranscriptStore.swift \
+            ios/CodexRemoteBridge/Sources/CodexRemoteBridge/ClientModels.swift \
+            ios/CodexRemoteBridge/Sources/CodexRemoteBridge/Pairing.swift \
+            ios/CodexRemoteBridge/Sources/CodexRemoteBridge/DeviceStateStore.swift \
+            ios/CodexRemoteBridge/Tests/ClientModelsTests.swift \
+            -o /tmp/maludex-client-models-tests
+          /tmp/maludex-client-models-tests
+
+      - name: Swift transcript tests
+        run: |
+          swiftc -parse-as-library \
+            ios/CodexRemoteBridge/Sources/CodexRemoteBridge/JSONValue.swift \
+            ios/CodexRemoteBridge/Sources/CodexRemoteBridge/ClientModels.swift \
+            ios/CodexRemoteBridge/Sources/CodexRemoteBridge/TranscriptStore.swift \
+            ios/CodexRemoteBridge/Tests/TranscriptStoreTests.swift \
+            -o /tmp/maludex-transcript-store-tests
+          /tmp/maludex-transcript-store-tests
+
+      - name: Xcode build
+        run: xcodebuild -project ios/CodexRemoteBridge/CodexRemoteBridge.xcodeproj -scheme CodexRemoteBridge -destination 'generic/platform=iOS Simulator' build

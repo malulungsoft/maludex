@@ -109,7 +109,7 @@ Bridge to client:
 
 ```json
 { "type": "bridge.ready", "protocolVersion": 1, "serverTime": "...", "lastEventId": 7 }
-{ "id": "ios-s", "type": "response", "ok": true, "result": { "bridgeVersion": "0.2.0", "codexRunning": true, "tokenFileValid": true } }
+{ "id": "ios-s", "type": "response", "ok": true, "result": { "bridgeVersion": "0.4.0", "codexRunning": true, "tokenFileValid": true } }
 { "id": "ios-1", "type": "response", "ok": true, "result": {} }
 { "id": "ios-c", "type": "response", "ok": true, "result": { "chats": [] } }
 { "id": "ios-o", "type": "response", "ok": true, "result": { "thread": {}, "transcript": [], "transcriptTruncation": { "truncated": false } } }
