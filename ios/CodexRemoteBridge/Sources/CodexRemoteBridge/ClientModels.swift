@@ -378,6 +378,9 @@ struct AppCopy: Equatable {
     var copyReportTitle: String { text("Copy report", "리포트 복사") }
     var noDiagnosticsTitle: String { text("No diagnostics loaded yet.", "아직 진단 정보를 불러오지 않았습니다.") }
     var recoveryTitle: String { text("Recovery", "복구") }
+    var notificationsBlockedTitle: String { text("Notifications are blocked", "알림이 차단됨") }
+    var notificationsBlockedDetail: String { text("Enable notifications in iPhone Settings to receive approval alerts while maludex is in the background.", "maludex가 백그라운드에 있을 때 승인 알림을 받으려면 iPhone 설정에서 알림을 허용하세요.") }
+    var openAppSettingsTitle: String { text("Open iPhone Settings", "iPhone 설정 열기") }
     var cannotConnectTitle: String { text("Cannot connect", "연결할 수 없음") }
     var cannotConnectDetail: String { text("Check that the Mac bridge is running and the iPhone can reach the paired Tailscale or Nginx address.", "Mac 브릿지가 실행 중이고 iPhone에서 페어링된 Tailscale 또는 Nginx 주소에 접근 가능한지 확인하세요.") }
     var authFailedTitle: String { text("Authentication failed", "인증 실패") }
@@ -509,7 +512,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.6.14"
+let maludexClientVersion = "0.6.15"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)

@@ -1048,6 +1048,17 @@ private struct DiagnosticsSheet: View {
                 }
 
                 Section(bridge.copy.recoveryTitle) {
+                    if bridge.notificationAuthorizationStatus == .denied {
+                        RecoveryHint(
+                            title: bridge.copy.notificationsBlockedTitle,
+                            detail: bridge.copy.notificationsBlockedDetail
+                        )
+                        Button {
+                            openAppSettings()
+                        } label: {
+                            Label(bridge.copy.openAppSettingsTitle, systemImage: "bell.badge")
+                        }
+                    }
                     RecoveryHint(
                         title: bridge.copy.cannotConnectTitle,
                         detail: bridge.copy.cannotConnectDetail
@@ -1083,6 +1094,13 @@ private struct DiagnosticsSheet: View {
             }
         }
     }
+}
+
+private func openAppSettings() {
+    guard let url = URL(string: UIApplication.openSettingsURLString) else {
+        return
+    }
+    UIApplication.shared.open(url)
 }
 
 private struct DiagnosticRow: View {

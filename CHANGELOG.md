@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.15 - 2026-05-05
+
+- Add an iPhone Diagnostics recovery action that opens the app's Settings page when local notifications are denied.
+- Explain that notification permission is required for background approval alerts.
+- Add English/Korean copy coverage for the notification recovery path.
+
 ## 0.6.14 - 2026-05-05
 
 - Teach `maludex doctor` to flag LaunchAgents configured with unsafe wildcard bridge hosts such as `0.0.0.0` or `::`.
