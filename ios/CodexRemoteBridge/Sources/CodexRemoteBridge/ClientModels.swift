@@ -265,6 +265,78 @@ enum AppLanguage: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+struct PromptTemplate: Identifiable, Equatable, Codable {
+    let id: String
+    let title: String
+    let prompt: String
+    let systemImage: String
+
+    static func mergedBuiltIns(language: AppLanguage, custom: [PromptTemplate]) -> [PromptTemplate] {
+        let builtIns = builtIn(language: language)
+        let builtInIds = Set(builtIns.map(\.id))
+        return builtIns + custom.filter { !builtInIds.contains($0.id) }
+    }
+
+    static func builtIn(language: AppLanguage) -> [PromptTemplate] {
+        switch language {
+        case .english:
+            return [
+                PromptTemplate(
+                    id: "review",
+                    title: "Review",
+                    prompt: "Review the current changes for bugs, regressions, and missing tests. Start with the highest-risk findings.",
+                    systemImage: "checkmark.shield"
+                ),
+                PromptTemplate(
+                    id: "fix",
+                    title: "Fix",
+                    prompt: "Find the issue, implement the fix, and verify it with focused tests.",
+                    systemImage: "wrench.and.screwdriver"
+                ),
+                PromptTemplate(
+                    id: "explain",
+                    title: "Explain",
+                    prompt: "Explain the current implementation and point me to the most important files.",
+                    systemImage: "text.bubble"
+                ),
+                PromptTemplate(
+                    id: "release",
+                    title: "Release prep",
+                    prompt: "Summarize the current changes, call out risks, and prepare the next release checklist.",
+                    systemImage: "tag"
+                )
+            ]
+        case .korean:
+            return [
+                PromptTemplate(
+                    id: "review",
+                    title: "리뷰",
+                    prompt: "현재 변경사항을 버그, 회귀, 누락된 테스트 중심으로 리뷰해줘. 위험도가 높은 항목부터 알려줘.",
+                    systemImage: "checkmark.shield"
+                ),
+                PromptTemplate(
+                    id: "fix",
+                    title: "수정",
+                    prompt: "문제를 찾아서 수정하고, 관련 테스트로 검증까지 진행해줘.",
+                    systemImage: "wrench.and.screwdriver"
+                ),
+                PromptTemplate(
+                    id: "explain",
+                    title: "설명",
+                    prompt: "현재 구현을 쉽게 설명하고, 먼저 봐야 할 핵심 파일을 알려줘.",
+                    systemImage: "text.bubble"
+                ),
+                PromptTemplate(
+                    id: "release",
+                    title: "릴리즈 준비",
+                    prompt: "현재 변경사항을 요약하고, 남은 위험과 다음 릴리즈 체크리스트를 정리해줘.",
+                    systemImage: "tag"
+                )
+            ]
+        }
+    }
+}
+
 struct AppCopy: Equatable {
     let language: AppLanguage
 
@@ -293,6 +365,8 @@ struct AppCopy: Equatable {
     var pairingPayloadTitle: String { text("Pairing payload", "페어링 코드") }
     var maludexBridgeTitle: String { text("maludex bridge", "maludex 브릿지") }
     var chatsTitle: String { text("Chats", "채팅") }
+    var searchChatsTitle: String { text("Search chats", "채팅 검색") }
+    var noChatsTitle: String { text("No chats found", "채팅을 찾을 수 없습니다") }
     var bridgesTitle: String { text("Bridges", "브릿지") }
     var diagnosticsTitle: String { text("Diagnostics", "진단") }
     var subagentTitle: String { text("Subagent", "서브에이전트") }
@@ -304,6 +378,11 @@ struct AppCopy: Equatable {
     var noBridge: String { text("No bridge", "브릿지 없음") }
     var projectTitle: String { text("Project", "프로젝트") }
     var noProjectsTitle: String { text("No projects", "프로젝트 없음") }
+    var searchProjectsTitle: String { text("Search projects", "프로젝트 검색") }
+    var favoriteProjectsTitle: String { text("Favorites", "즐겨찾기") }
+    var allProjectsTitle: String { text("All projects", "전체 프로젝트") }
+    var favoriteProjectTitle: String { text("Add to favorites", "즐겨찾기 추가") }
+    var unfavoriteProjectTitle: String { text("Remove from favorites", "즐겨찾기 해제") }
     var refreshProjectsTitle: String { text("Refresh projects", "프로젝트 새로고침") }
     var newProjectTitle: String { text("New project", "새 프로젝트") }
     var projectNamePlaceholder: String { text("Project name", "프로젝트 이름") }
@@ -311,6 +390,9 @@ struct AppCopy: Equatable {
     var selectProjectPrompt: String { text("Select a project", "프로젝트를 선택하세요") }
     var modelTitle: String { text("Model", "모델") }
     var defaultModelTitle: String { text("Default", "기본값") }
+    var bridgeDefaultModelDetail: String { text("Bridge default model", "브릿지 기본 모델") }
+    var searchModelsTitle: String { text("Search models", "모델 검색") }
+    var noModelsTitle: String { text("No models found", "모델을 찾을 수 없습니다") }
     var refreshModelsTitle: String { text("Refresh models", "모델 새로고침") }
     var supportsImagesTitle: String { text("Supports images", "이미지 지원") }
     var startThreadTitle: String { text("Start thread", "스레드 시작") }
@@ -349,11 +431,25 @@ struct AppCopy: Equatable {
     var fileTitle: String { text("File", "파일") }
     var voiceInputTitle: String { text("Voice input", "음성 입력") }
     var stopVoiceInputTitle: String { text("Stop voice input", "음성 입력 중지") }
+    var expandComposerTitle: String { text("Expand composer", "입력창 확대") }
+    var composerTitle: String { text("Compose prompt", "프롬프트 작성") }
     var steerActiveTurnTitle: String { text("Steer active turn", "현재 작업에 추가 지시") }
     var sendTitle: String { text("Send", "보내기") }
     var removeAttachmentTitle: String { text("Remove attachment", "첨부 제거") }
+    var quickPromptsTitle: String { text("Quick prompts", "빠른 프롬프트") }
+    var manageQuickPromptsTitle: String { text("Manage quick prompts", "빠른 프롬프트 관리") }
+    var savedQuickPromptsTitle: String { text("Saved prompts", "저장한 프롬프트") }
+    var newQuickPromptTitle: String { text("New quick prompt", "새 빠른 프롬프트") }
+    var editQuickPromptTitle: String { text("Edit prompt", "프롬프트 편집") }
+    var saveQuickPromptTitle: String { text("Save prompt", "프롬프트 저장") }
+    var noSavedQuickPromptsTitle: String { text("No saved prompts", "저장한 프롬프트 없음") }
+    var quickPromptNamePlaceholder: String { text("Short name", "짧은 이름") }
+    var quickPromptBodyPlaceholder: String { text("Prompt body", "프롬프트 내용") }
+    var quickPromptIconPlaceholder: String { text("SF Symbol, e.g. sparkles", "SF Symbol 예: sparkles") }
     var savedBridgesTitle: String { text("Saved bridges", "저장된 브릿지") }
     var savedBridgesSubtitle: String { text("Switch between paired local PCs.", "페어링된 로컬 PC들을 전환합니다.") }
+    var renameBridgeTitle: String { text("Rename bridge", "브릿지 이름 변경") }
+    var bridgeNamePlaceholder: String { text("Bridge name", "브릿지 이름") }
     var forgetTitle: String { text("Forget", "삭제") }
     var forgetAllTitle: String { text("Forget all", "모두 삭제") }
     var pairAnotherPCSubtitle: String { text("Pair another PC by scanning that PC's maludex QR.", "다른 PC의 maludex QR을 스캔해서 추가로 페어링하세요.") }
@@ -370,6 +466,7 @@ struct AppCopy: Equatable {
     var runtimeTitle: String { text("Runtime", "런타임") }
     var connectedClientTitle: String { text("Connected client", "연결된 클라이언트") }
     var activeTurnsTitle: String { text("Active turns", "진행 중 작업") }
+    var queuedPromptsTitle: String { text("Queued prompts", "대기 중 프롬프트") }
     var pendingApprovalsTitle: String { text("Pending approvals", "대기 중 승인") }
     var eventBufferTitle: String { text("Event buffer", "이벤트 버퍼") }
     var mobileHandoffRetentionTitle: String { text("Mobile handoff retention", "모바일 핸드오프 보관") }
@@ -513,7 +610,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.6.19"
+let maludexClientVersion = "0.7.0"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
@@ -714,6 +811,7 @@ struct BridgeDiagnostics: Equatable {
     let eventBufferSize: Int
     let eventReplayLimit: Int
     let activeTurnCount: Int
+    let promptQueueCount: Int
     let activeTurns: [ActiveTurn]
     let pendingApprovalCount: Int
     let pendingApprovals: [PendingApproval]
@@ -745,6 +843,7 @@ struct BridgeDiagnostics: Equatable {
         self.eventBufferSize = json["eventBufferSize"]?.intValue ?? 0
         self.eventReplayLimit = json["eventReplayLimit"]?.intValue ?? 0
         self.activeTurnCount = json["activeTurnCount"]?.intValue ?? 0
+        self.promptQueueCount = json["promptQueueCount"]?.intValue ?? 0
         self.activeTurns = json["activeTurns"]?.arrayValue?.compactMap { value in
             guard let object = value.objectValue else { return nil }
             return ActiveTurn(json: object)
@@ -774,6 +873,7 @@ struct BridgeDiagnostics: Equatable {
             "eventBufferSize: \(eventBufferSize)",
             "eventReplayLimit: \(eventReplayLimit)",
             "activeTurnCount: \(activeTurnCount)",
+            "promptQueueCount: \(promptQueueCount)",
             "activeTurns: \(activeTurns.map { "\($0.threadId)/\($0.turnId)" }.joined(separator: ", "))",
             "pendingApprovalCount: \(pendingApprovalCount)",
             "pendingApprovals: \(pendingApprovals.map { "\($0.approvalId)/\($0.method)" }.joined(separator: ", "))",

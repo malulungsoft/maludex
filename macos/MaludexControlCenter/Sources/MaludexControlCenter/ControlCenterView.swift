@@ -12,6 +12,7 @@ struct ControlCenterView: View {
     @State private var errorMessage: String?
     @State private var handoffError: String?
     @State private var qrImage: NSImage?
+    @State private var qrImageURL: URL?
 
     private var runner: DoctorRunner {
         DoctorRunner(repoRoot: URL(fileURLWithPath: repoRoot))
@@ -19,6 +20,10 @@ struct ControlCenterView: View {
 
     private var copy: ControlCenterCopy {
         ControlCenterCopy(languageCode: languageCode)
+    }
+
+    private var actionColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 12)]
     }
 
     var body: some View {
@@ -31,6 +36,7 @@ struct ControlCenterView: View {
                     VStack(spacing: 18) {
                         repoPicker
                         overviewGrid
+                        nextStepPanel
                         actionPanel
                         handoffPanel
                         issuesPanel
@@ -136,11 +142,49 @@ struct ControlCenterView: View {
         }
     }
 
+    private var nextStepPanel: some View {
+        HStack(spacing: 14) {
+            Image(systemName: report?.status == .healthy ? "checkmark.seal.fill" : "arrow.forward.circle.fill")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(statusColor(report?.status ?? .warning))
+                .frame(width: 44, height: 44)
+                .background(statusColor(report?.status ?? .warning).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(copy.nextStepTitle)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.secondary)
+                Text(nextStepTitle)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                if let summary = report?.summary {
+                    Text(summary)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer(minLength: 12)
+
+            if let action = report?.primaryAction, action != "none" {
+                Button {
+                    Task { await performPrimaryAction(action) }
+                } label: {
+                    Label(copy.recommendedActionTitle(action), systemImage: "bolt.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isBusy)
+            }
+        }
+        .padding(18)
+        .background { panelBackground }
+    }
+
     private var actionPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(copy.bridgeActionsTitle)
                 .font(.system(size: 18, weight: .bold))
-            HStack(spacing: 12) {
+            LazyVGrid(columns: actionColumns, spacing: 12) {
                 ActionButton(title: copy.repairButton, icon: "wrench.and.screwdriver", tint: Color(red: 0.02, green: 0.45, blue: 0.40), disabled: isBusy) {
                     Task { await perform(.repair) }
                 }
@@ -303,6 +347,22 @@ struct ControlCenterView: View {
                     Text(report?.endpoint ?? "")
                         .font(.system(size: 13, design: .monospaced))
                         .foregroundStyle(.secondary)
+
+                    HStack(spacing: 10) {
+                        Button {
+                            copyQRImage()
+                        } label: {
+                            Label(copy.copyQRImageButton, systemImage: "doc.on.doc")
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button {
+                            revealQRImage()
+                        } label: {
+                            Label(copy.revealQRImageButton, systemImage: "finder")
+                        }
+                        .buttonStyle(.bordered)
+                    }
                 }
                 Spacer()
             }
@@ -317,6 +377,12 @@ struct ControlCenterView: View {
             return "\(bridgeVersion) / \(report.packageVersion)"
         }
         return report.packageVersion
+    }
+
+    private var nextStepTitle: String {
+        guard let report else { return copy.checkingValue }
+        guard report.primaryAction != "none" else { return copy.readyNextStepTitle }
+        return copy.recommendedActionTitle(report.primaryAction)
     }
 
     private var panelBackground: some View {
@@ -348,11 +414,27 @@ struct ControlCenterView: View {
         }
     }
 
+    private func performPrimaryAction(_ action: String) async {
+        switch action {
+        case "repair":
+            await perform(.repair)
+        case "start":
+            await perform(.start)
+        case "stop":
+            await perform(.stop)
+        case "restart":
+            await perform(.restart)
+        default:
+            await refresh()
+        }
+    }
+
     private func pairingQR() async {
         let url = URL(fileURLWithPath: "/tmp/maludex-pairing.png")
         await runBusy {
             report = try await runner.run(.pairingQR(url))
             qrImage = NSImage(contentsOf: url)
+            qrImageURL = url
         }
     }
 
@@ -361,6 +443,7 @@ struct ControlCenterView: View {
         await runBusy {
             report = try await runner.run(.rotateToken(url))
             qrImage = NSImage(contentsOf: url)
+            qrImageURL = url
         }
     }
 
@@ -400,6 +483,17 @@ struct ControlCenterView: View {
         }
     }
 
+    private func copyQRImage() {
+        guard let qrImage else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([qrImage])
+    }
+
+    private func revealQRImage() {
+        guard let qrImageURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([qrImageURL])
+    }
+
     private func statusIcon(_ status: DoctorStatus) -> String {
         switch status {
         case .healthy:
@@ -426,6 +520,7 @@ struct ControlCenterView: View {
 private struct HandoffEntryRow: View {
     let entry: MobileHandoffEntry
     let copy: ControlCenterCopy
+    @State private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -442,10 +537,29 @@ private struct HandoffEntryRow: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text(entry.promptPreview())
+            Text(isExpanded ? entry.prompt : entry.promptPreview())
                 .font(.system(size: 14, weight: .medium))
-                .lineLimit(4)
+                .lineLimit(isExpanded ? nil : 4)
                 .textSelection(.enabled)
+
+            HStack(spacing: 10) {
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    Label(isExpanded ? copy.collapsePromptButton : copy.expandPromptButton, systemImage: isExpanded ? "chevron.up" : "chevron.down")
+                }
+                .buttonStyle(.borderless)
+
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(entry.prompt, forType: .string)
+                } label: {
+                    Label(copy.copyPromptButton, systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color(red: 0.02, green: 0.45, blue: 0.40))
 
             HStack(spacing: 12) {
                 if let cwd = entry.cwd, !cwd.isEmpty {
@@ -541,8 +655,10 @@ private struct ActionButton: View {
                     .font(.system(size: 20, weight: .semibold))
                 Text(title)
                     .font(.system(size: 12, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
             }
-            .frame(width: 104, height: 76)
+            .frame(maxWidth: .infinity, minHeight: 76)
         }
         .buttonStyle(.plain)
         .foregroundStyle(tint)

@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.6.19`
+Current version: `v0.7.0`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 
@@ -35,8 +35,8 @@ A short tour captured from the real SwiftUI app running in iOS Simulator is embe
 
 ## Features
 
-- SwiftUI iPhone client with QR pairing, camera scanner, connection status, project picker, prompt composer, streaming transcript, approval cards, attachment picker, voice input, and local transcript persistence.
-- SwiftUI macOS Control Center app for bridge health, LaunchAgent repair, restart/start/stop, token rotation, and pairing QR generation.
+- SwiftUI iPhone client with QR pairing, camera scanner, connection status, searchable project/model pickers, project favorites, editable saved quick prompts, prompt composer, streaming transcript, approval cards, attachment picker, voice input, and local transcript persistence.
+- SwiftUI macOS Control Center app for bridge health, recommended next steps, LaunchAgent repair, restart/start/stop, token rotation, pairing QR generation, and desktop review of iPhone-authored handoff prompts.
 - Multiple saved Mac bridges, each with its own Keychain token and per-bridge session state.
 - Node.js + TypeScript Mac bridge that translates between mobile WebSocket messages and Codex JSON-RPC over stdio JSONL.
 - Project listing and project creation under configured roots.
@@ -61,6 +61,7 @@ A short tour captured from the real SwiftUI app running in iOS Simulator is embe
 - The bridge defaults to `approvalPolicy: "on-request"` and `sandbox: "read-only"`.
 - The mobile app can request only `read-only` or `workspace-write`; it does not expose `danger-full-access` or `approvalPolicy: "never"`.
 - Prompt bodies are sent to Codex but are not logged by the bridge by default.
+- The iPhone app persists the current prompt draft, saved quick prompts, and recent transcript locally per paired bridge so app restarts do not wipe work in progress. Those local app settings can contain prompt bodies; do not export device backups or diagnostics publicly.
 - Queued mobile prompts are persisted locally so they can resume after a bridge restart. That queue file can contain prompt bodies and attachment references; keep it private, keep its `0600` permissions, and never commit or share it.
 - iPhone-authored prompts are also copied into `~/.codex-iphone-remote-bridge/mobile-handoff.jsonl` with `0600` permissions so a desktop Codex session can explicitly recover what was sent from mobile. This is not a log stream, but it can contain prompt bodies; treat it as private and never commit or share it. The bridge keeps only the most recent 200 handoff entries by default; set `BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES` or `--mobile-handoff-max-entries` to reduce or tune retention.
 - Mobile attachments are copied into the selected workspace under `.codex-mobile-attachments/` with `0600` file permissions. Treat those files as local project data.
@@ -124,7 +125,7 @@ Open the standalone Mac app package in Xcode:
 open macos/MaludexControlCenter/Package.swift
 ```
 
-Run the `MaludexControlCenter` scheme. The app reads the redacted doctor JSON from the local repo and can refresh bridge status, repair a stale LaunchAgent path, restart/start/stop the bridge, rotate the pairing token, and display a new pairing QR.
+Run the `MaludexControlCenter` scheme. The app reads the redacted doctor JSON from the local repo and can refresh bridge status, show the recommended next step, repair a stale LaunchAgent path, restart/start/stop the bridge, rotate the pairing token, and display a new pairing QR.
 
 The app never displays the raw bearer token. Pairing QR images are still secrets because they encode the token.
 
@@ -239,9 +240,10 @@ Codex session can explicitly recover mobile instructions that were sent through
 the bridge but not live-injected into an already open desktop conversation.
 
 The macOS Control Center shows a **Mobile Handoff** panel with the latest
-iPhone-authored requests, prompt previews, metadata, and attachment counts. This
-panel reads the same private inbox file and can display prompt bodies, so do not
-share screenshots or copied output publicly.
+iPhone-authored requests, prompt previews, metadata, and attachment counts. You
+can expand a handoff card and copy the full prompt for recovery. This panel reads
+the same private inbox file and can display prompt bodies, so do not share
+screenshots or copied output publicly.
 
 ```bash
 npm run handoff -- --limit 10

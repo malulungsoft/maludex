@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0 - 2026-05-05
+
+- Add searchable iPhone project and model picker sheets, including model capability badges.
+- Add iPhone project favorites so frequently used workspaces can be pinned above the full project list.
+- Reuse the searchable model picker from Session settings so long model lists stay manageable.
+- Add quick prompt chips and a full-screen composer for longer iPhone prompts, with per-bridge draft persistence.
+- Add editable saved quick prompts on iPhone, including local persistence, edit, delete, and reorder controls.
+- Add saved bridge renaming on iPhone so multiple paired Macs can be labeled clearly.
+- Add search to the saved bridge switcher for multi-PC setups.
+- Add queue count diagnostics, collapsed queue UI, composer status chips, attachment thumbnails, and collapsed long transcript bubbles.
+- Improve the macOS Control Center Mobile Handoff panel with full prompt expand/copy actions and QR image copy/reveal controls.
+- Add a recommended next-step card to the macOS Control Center and make bridge action buttons adaptive so the layout behaves better at smaller window sizes.
+
 ## 0.6.19 - 2026-05-05
 
 - Add a shared pairing URI helper so bridge, doctor, and token rotation QR flows encode pairing payloads consistently.

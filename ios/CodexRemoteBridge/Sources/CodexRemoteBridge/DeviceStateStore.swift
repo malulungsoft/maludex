@@ -53,6 +53,7 @@ struct PersistedBridgeSession: Codable, Equatable {
     var autoCompactEnabled: Bool
     var autoCompactTokenLimit: Int
     var threadId: String
+    var promptDraft: String = ""
     var lastEventId: Int
     var transcript: [TranscriptEntry]
     var updatedAt: Date
@@ -66,6 +67,7 @@ struct PersistedBridgeSession: Codable, Equatable {
         autoCompactEnabled: true,
         autoCompactTokenLimit: 120000,
         threadId: "",
+        promptDraft: "",
         lastEventId: 0,
         transcript: [],
         updatedAt: Date(timeIntervalSince1970: 0)
@@ -85,11 +87,14 @@ struct PersistedDeviceState: Codable, Equatable {
     var autoCompactEnabled: Bool
     var autoCompactTokenLimit: Int
     var threadId: String
+    var promptDraft: String
     var lastEventId: Int
     var transcript: [TranscriptEntry]
     var bridges: [SavedBridge]
     var activeBridgeId: String
     var bridgeSessions: [String: PersistedBridgeSession]
+    var customPromptTemplates: [PromptTemplate]
+    var favoriteProjectPaths: [String]
     var updatedAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -105,11 +110,14 @@ struct PersistedDeviceState: Codable, Equatable {
         case autoCompactEnabled
         case autoCompactTokenLimit
         case threadId
+        case promptDraft
         case lastEventId
         case transcript
         case bridges
         case activeBridgeId
         case bridgeSessions
+        case customPromptTemplates
+        case favoriteProjectPaths
         case updatedAt
     }
 
@@ -126,11 +134,14 @@ struct PersistedDeviceState: Codable, Equatable {
         autoCompactEnabled: true,
         autoCompactTokenLimit: 120000,
         threadId: "",
+        promptDraft: "",
         lastEventId: 0,
         transcript: [],
         bridges: [],
         activeBridgeId: "",
         bridgeSessions: [:],
+        customPromptTemplates: [],
+        favoriteProjectPaths: [],
         updatedAt: Date(timeIntervalSince1970: 0)
     )
 
@@ -147,11 +158,14 @@ struct PersistedDeviceState: Codable, Equatable {
         autoCompactEnabled: Bool,
         autoCompactTokenLimit: Int,
         threadId: String,
+        promptDraft: String = "",
         lastEventId: Int,
         transcript: [TranscriptEntry],
         bridges: [SavedBridge] = [],
         activeBridgeId: String = "",
         bridgeSessions: [String: PersistedBridgeSession] = [:],
+        customPromptTemplates: [PromptTemplate] = [],
+        favoriteProjectPaths: [String] = [],
         updatedAt: Date
     ) {
         self.host = host
@@ -166,11 +180,14 @@ struct PersistedDeviceState: Codable, Equatable {
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactTokenLimit = autoCompactTokenLimit
         self.threadId = threadId
+        self.promptDraft = promptDraft
         self.lastEventId = lastEventId
         self.transcript = transcript
         self.bridges = bridges
         self.activeBridgeId = activeBridgeId
         self.bridgeSessions = bridgeSessions
+        self.customPromptTemplates = customPromptTemplates
+        self.favoriteProjectPaths = favoriteProjectPaths
         self.updatedAt = updatedAt
     }
 
@@ -189,11 +206,14 @@ struct PersistedDeviceState: Codable, Equatable {
         self.autoCompactEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoCompactEnabled) ?? true
         self.autoCompactTokenLimit = try container.decodeIfPresent(Int.self, forKey: .autoCompactTokenLimit) ?? 120000
         self.threadId = try container.decodeIfPresent(String.self, forKey: .threadId) ?? ""
+        self.promptDraft = try container.decodeIfPresent(String.self, forKey: .promptDraft) ?? ""
         self.lastEventId = try container.decodeIfPresent(Int.self, forKey: .lastEventId) ?? 0
         self.transcript = try container.decodeIfPresent([TranscriptEntry].self, forKey: .transcript) ?? []
         self.bridges = try container.decodeIfPresent([SavedBridge].self, forKey: .bridges) ?? []
         self.activeBridgeId = try container.decodeIfPresent(String.self, forKey: .activeBridgeId) ?? ""
         self.bridgeSessions = try container.decodeIfPresent([String: PersistedBridgeSession].self, forKey: .bridgeSessions) ?? [:]
+        self.customPromptTemplates = try container.decodeIfPresent([PromptTemplate].self, forKey: .customPromptTemplates) ?? []
+        self.favoriteProjectPaths = try container.decodeIfPresent([String].self, forKey: .favoriteProjectPaths) ?? []
         self.updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date(timeIntervalSince1970: 0)
     }
 
@@ -211,6 +231,7 @@ struct PersistedDeviceState: Codable, Equatable {
             autoCompactEnabled: autoCompactEnabled,
             autoCompactTokenLimit: autoCompactTokenLimit,
             threadId: threadId,
+            promptDraft: promptDraft,
             lastEventId: lastEventId,
             transcript: transcript,
             updatedAt: updatedAt
@@ -226,6 +247,7 @@ struct PersistedDeviceState: Codable, Equatable {
         autoCompactEnabled = session.autoCompactEnabled
         autoCompactTokenLimit = session.autoCompactTokenLimit
         threadId = session.threadId
+        promptDraft = session.promptDraft
         lastEventId = session.lastEventId
         transcript = session.transcript
     }
@@ -321,6 +343,83 @@ final class DeviceStateStore {
         saveState(state)
     }
 
+    func renameBridge(id: String, label: String) {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        var state = migratedState()
+        guard let index = state.bridges.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        state.bridges[index].label = trimmed
+        state.bridges[index].updatedAt = Date()
+        state.updatedAt = Date()
+        saveState(state)
+    }
+
+    func customPromptTemplates() -> [PromptTemplate] {
+        migratedState().customPromptTemplates
+    }
+
+    func saveCustomPromptTemplate(_ template: PromptTemplate) {
+        guard let sanitized = sanitizedPromptTemplate(template) else {
+            return
+        }
+        var state = migratedState()
+        if let index = state.customPromptTemplates.firstIndex(where: { $0.id == sanitized.id }) {
+            state.customPromptTemplates[index] = sanitized
+        } else {
+            state.customPromptTemplates.append(sanitized)
+        }
+        state.updatedAt = Date()
+        saveState(state)
+    }
+
+    func deleteCustomPromptTemplate(id: String) {
+        var state = migratedState()
+        state.customPromptTemplates.removeAll { $0.id == id }
+        state.updatedAt = Date()
+        saveState(state)
+    }
+
+    func moveCustomPromptTemplate(id: String, direction: Int) {
+        guard direction != 0 else {
+            return
+        }
+        var state = migratedState()
+        guard let currentIndex = state.customPromptTemplates.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        let nextIndex = max(0, min(state.customPromptTemplates.count - 1, currentIndex + direction))
+        guard nextIndex != currentIndex else {
+            return
+        }
+        let template = state.customPromptTemplates.remove(at: currentIndex)
+        state.customPromptTemplates.insert(template, at: nextIndex)
+        state.updatedAt = Date()
+        saveState(state)
+    }
+
+    func favoriteProjectPaths() -> [String] {
+        migratedState().favoriteProjectPaths
+    }
+
+    func toggleFavoriteProject(path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        var state = migratedState()
+        if let index = state.favoriteProjectPaths.firstIndex(of: trimmed) {
+            state.favoriteProjectPaths.remove(at: index)
+        } else {
+            state.favoriteProjectPaths.append(trimmed)
+        }
+        state.updatedAt = Date()
+        saveState(state)
+    }
+
     func deleteBridge(id: String) throws {
         var state = migratedState()
         state.bridges.removeAll { $0.id == id }
@@ -361,6 +460,7 @@ final class DeviceStateStore {
         autoCompactEnabled: Bool,
         autoCompactTokenLimit: Int,
         threadId: String,
+        promptDraft: String = "",
         lastEventId: Int,
         transcript: [TranscriptEntry]
     ) {
@@ -374,6 +474,7 @@ final class DeviceStateStore {
         state.autoCompactEnabled = autoCompactEnabled
         state.autoCompactTokenLimit = autoCompactTokenLimit
         state.threadId = threadId
+        state.promptDraft = promptDraft
         state.lastEventId = lastEventId
         state.transcript = sanitizedTranscript(transcript)
         if !state.activeBridgeId.isEmpty {
@@ -462,6 +563,21 @@ final class DeviceStateStore {
             copy.isStreaming = false
             return copy
         }
+    }
+
+    private func sanitizedPromptTemplate(_ template: PromptTemplate) -> PromptTemplate? {
+        let title = template.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prompt = template.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let systemImage = template.systemImage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !template.id.isEmpty, !title.isEmpty, !prompt.isEmpty else {
+            return nil
+        }
+        return PromptTemplate(
+            id: template.id,
+            title: String(title.prefix(60)),
+            prompt: prompt,
+            systemImage: systemImage.isEmpty ? "sparkles" : systemImage
+        )
     }
 }
 

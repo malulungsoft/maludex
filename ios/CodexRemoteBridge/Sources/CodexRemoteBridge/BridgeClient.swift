@@ -99,6 +99,8 @@ final class BridgeClient: ObservableObject {
     @Published private(set) var activeBridgeId = ""
     @Published private(set) var diagnostics: BridgeDiagnostics?
     @Published private(set) var notificationAuthorizationStatus = MobileNotificationAuthorizationStatus.unknown
+    @Published private(set) var customPromptTemplates: [PromptTemplate] = []
+    @Published private(set) var favoriteProjectPaths: [String] = []
     @Published var selectedProjectPath = "" {
         didSet { persistSnapshot() }
     }
@@ -129,6 +131,9 @@ final class BridgeClient: ObservableObject {
     @Published var threadId = "" {
         didSet { persistSnapshot() }
     }
+    @Published var promptDraft = "" {
+        didSet { persistSnapshot() }
+    }
     @Published var lastError: String?
 
     var isConnected: Bool {
@@ -153,6 +158,10 @@ final class BridgeClient: ObservableObject {
 
     var copy: AppCopy {
         AppCopy(language: selectedLanguage)
+    }
+
+    var quickPromptTemplates: [PromptTemplate] {
+        PromptTemplate.mergedBuiltIns(language: selectedLanguage, custom: customPromptTemplates)
     }
 
     var activeThreadLabel: String {
@@ -292,6 +301,57 @@ final class BridgeClient: ObservableObject {
         }
     }
 
+    func renameSavedBridge(id: String, label: String) {
+        stateStore.renameBridge(id: id, label: label)
+        refreshSavedPairingState()
+        if let current = pairing, current.id == id, let renamed = savedBridges.first(where: { $0.id == id }) {
+            pairing = Pairing(
+                host: current.host,
+                port: current.port,
+                token: current.token,
+                usesTLS: current.usesTLS,
+                label: renamed.label
+            )
+        }
+    }
+
+    func saveCustomPromptTemplate(id: String? = nil, title: String, prompt: String, systemImage: String) {
+        let existingId = id?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let templateId: String
+        if let existingId, !existingId.isEmpty {
+            templateId = existingId
+        } else {
+            templateId = "custom-\(UUID().uuidString)"
+        }
+        let template = PromptTemplate(
+            id: templateId,
+            title: title,
+            prompt: prompt,
+            systemImage: systemImage
+        )
+        stateStore.saveCustomPromptTemplate(template)
+        refreshCustomPromptTemplates()
+    }
+
+    func deleteCustomPromptTemplate(id: String) {
+        stateStore.deleteCustomPromptTemplate(id: id)
+        refreshCustomPromptTemplates()
+    }
+
+    func moveCustomPromptTemplate(id: String, direction: Int) {
+        stateStore.moveCustomPromptTemplate(id: id, direction: direction)
+        refreshCustomPromptTemplates()
+    }
+
+    func isFavoriteProject(_ path: String) -> Bool {
+        favoriteProjectPaths.contains(path)
+    }
+
+    func toggleFavoriteProject(path: String) {
+        stateStore.toggleFavoriteProject(path: path)
+        refreshFavoriteProjects()
+    }
+
     func disconnect() {
         manuallyDisconnected = true
         cancelReconnect()
@@ -329,6 +389,8 @@ final class BridgeClient: ObservableObject {
         projectRoots.removeAll()
         models.removeAll()
         chats.removeAll()
+        customPromptTemplates.removeAll()
+        favoriteProjectPaths.removeAll()
         transcriptStore.replace(with: [])
         transcript = []
         savedBridges = []
@@ -1313,6 +1375,7 @@ final class BridgeClient: ObservableObject {
         autoCompactEnabled = snapshot.autoCompactEnabled
         autoCompactTokenLimit = snapshot.autoCompactTokenLimit
         threadId = snapshot.threadId
+        promptDraft = snapshot.promptDraft
         lastEventId = snapshot.lastEventId
         transcriptStore.replace(with: snapshot.transcript)
         transcript = transcriptStore.entries
@@ -1321,6 +1384,8 @@ final class BridgeClient: ObservableObject {
         isLoadingOlderTranscript = false
         activeBridgeId = snapshot.activeBridgeId
         savedBridges = stateStore.savedBridges()
+        customPromptTemplates = stateStore.customPromptTemplates()
+        favoriteProjectPaths = stateStore.favoriteProjectPaths()
         suppressPersistence = false
     }
 
@@ -1331,6 +1396,14 @@ final class BridgeClient: ObservableObject {
         activeBridgeId = snapshotActiveBridgeId.isEmpty ? bridges.first?.id ?? "" : snapshotActiveBridgeId
         hasSavedPairing = !bridges.isEmpty
         savedPairingLabel = bridges.first(where: { $0.id == activeBridgeId })?.label ?? bridges.first?.label
+    }
+
+    private func refreshCustomPromptTemplates() {
+        customPromptTemplates = stateStore.customPromptTemplates()
+    }
+
+    private func refreshFavoriteProjects() {
+        favoriteProjectPaths = stateStore.favoriteProjectPaths()
     }
 
     private func persistSnapshot() {
@@ -1347,6 +1420,7 @@ final class BridgeClient: ObservableObject {
             autoCompactEnabled: autoCompactEnabled,
             autoCompactTokenLimit: autoCompactTokenLimit,
             threadId: threadId,
+            promptDraft: promptDraft,
             lastEventId: lastEventId,
             transcript: transcriptStore.entries
         )

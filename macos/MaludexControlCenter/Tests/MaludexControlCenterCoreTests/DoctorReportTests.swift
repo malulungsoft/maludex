@@ -49,6 +49,11 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertEqual(ControlCenterCopy(language: .korean).bridgeActionsTitle, "브릿지 작업")
         XCTAssertEqual(ControlCenterCopy(languageCode: "unknown").refreshButton, "Refresh")
         XCTAssertEqual(ControlCenterCopy(language: .korean).statusLabel(.healthy), "정상")
+        XCTAssertEqual(ControlCenterCopy(language: .english).copyPromptButton, "Copy Prompt")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).expandPromptButton, "전체 보기")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).copyQRImageButton, "QR 이미지 복사")
+        XCTAssertEqual(ControlCenterCopy(language: .english).nextStepTitle, "Recommended Next Step")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).recommendedActionTitle("repair"), "복구")
     }
 
     func testDecodesHealthyDoctorReport() throws {

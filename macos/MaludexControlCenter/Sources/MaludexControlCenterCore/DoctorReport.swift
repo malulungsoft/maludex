@@ -55,6 +55,9 @@ public struct ControlCenterCopy: Equatable {
     public var pairButton: String { text("Pair", "페어링") }
     public var rotateButton: String { text("Rotate", "토큰 교체") }
     public var diagnosticsTitle: String { text("Diagnostics", "진단") }
+    public var nextStepTitle: String { text("Recommended Next Step", "추천 다음 단계") }
+    public var readyNextStepTitle: String { text("Ready to pair and use", "페어링해서 사용할 준비 완료") }
+    public var runActionButton: String { text("Run Action", "작업 실행") }
     public var copyReportButton: String { text("Copy Report", "리포트 복사") }
     public var repairableBadge: String { text("Repairable", "복구 가능") }
     public var pairingQRTitle: String { text("Pairing QR", "페어링 QR") }
@@ -68,6 +71,11 @@ public struct ControlCenterCopy: Equatable {
     public var mobileHandoffThreadLabel: String { text("Thread", "스레드") }
     public var mobileHandoffCwdLabel: String { text("Project", "프로젝트") }
     public var mobileHandoffModelLabel: String { text("Model", "모델") }
+    public var copyPromptButton: String { text("Copy Prompt", "프롬프트 복사") }
+    public var expandPromptButton: String { text("Show Full", "전체 보기") }
+    public var collapsePromptButton: String { text("Collapse", "접기") }
+    public var copyQRImageButton: String { text("Copy QR Image", "QR 이미지 복사") }
+    public var revealQRImageButton: String { text("Reveal in Finder", "Finder에서 보기") }
 
     public func statusLabel(_ status: DoctorStatus) -> String {
         switch status {
@@ -77,6 +85,21 @@ public struct ControlCenterCopy: Equatable {
             return text("Needs Attention", "확인 필요")
         case .error:
             return text("Error", "오류")
+        }
+    }
+
+    public func recommendedActionTitle(_ action: String) -> String {
+        switch action {
+        case "repair":
+            return repairButton
+        case "start":
+            return startButton
+        case "stop":
+            return stopButton
+        case "restart":
+            return restartButton
+        default:
+            return runActionButton
         }
     }
 
