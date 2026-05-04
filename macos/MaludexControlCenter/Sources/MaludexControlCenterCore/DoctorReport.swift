@@ -59,6 +59,15 @@ public struct ControlCenterCopy: Equatable {
     public var repairableBadge: String { text("Repairable", "복구 가능") }
     public var pairingQRTitle: String { text("Pairing QR", "페어링 QR") }
     public var pairingQRWarning: String { text("Treat this QR like a password.", "이 QR은 비밀번호처럼 다루세요.") }
+    public var mobileHandoffTitle: String { text("Mobile Handoff", "모바일 핸드오프") }
+    public var mobileHandoffEmpty: String { text("No iPhone-authored requests are waiting.", "대기 중인 iPhone 요청이 없습니다.") }
+    public var mobileHandoffPrivacyWarning: String { text("Private local data: prompt bodies may appear here. Avoid screenshots and public logs.", "비공개 로컬 데이터입니다. 프롬프트 본문이 표시될 수 있으니 스크린샷이나 공개 로그에 올리지 마세요.") }
+    public var mobileHandoffFileLabel: String { text("Inbox file", "보관 파일") }
+    public var mobileHandoffPromptLabel: String { text("Prompt", "프롬프트") }
+    public var mobileHandoffAttachmentsLabel: String { text("Attachments", "첨부") }
+    public var mobileHandoffThreadLabel: String { text("Thread", "스레드") }
+    public var mobileHandoffCwdLabel: String { text("Project", "프로젝트") }
+    public var mobileHandoffModelLabel: String { text("Model", "모델") }
 
     public func statusLabel(_ status: DoctorStatus) -> String {
         switch status {
@@ -76,6 +85,56 @@ public struct ControlCenterCopy: Equatable {
     }
 }
 
+public struct MobileHandoffReport: Codable, Equatable {
+    public let file: String
+    public let entries: [MobileHandoffEntry]
+}
+
+public struct MobileHandoffEntry: Codable, Equatable, Identifiable {
+    public let schemaVersion: Int
+    public let id: String
+    public let createdAt: String
+    public let source: String
+    public let kind: String
+    public let threadId: String
+    public let turnId: String?
+    public let cwd: String?
+    public let model: String?
+    public let role: String?
+    public let prompt: String
+    public let promptBytes: Int
+    public let attachments: [MobileHandoffAttachment]
+
+    public var shortThreadId: String {
+        shortIdentifier(threadId)
+    }
+
+    public var shortTurnId: String? {
+        turnId.map(shortIdentifier)
+    }
+
+    public func promptPreview(maxCharacters: Int = 180) -> String {
+        let normalized = prompt
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        guard normalized.count > maxCharacters else {
+            return normalized
+        }
+        return "\(String(normalized.prefix(max(0, maxCharacters))))..."
+    }
+}
+
+public struct MobileHandoffAttachment: Codable, Equatable, Identifiable {
+    public let kind: String
+    public let filename: String
+    public let mimeType: String?
+    public let bytes: Int
+
+    public var id: String {
+        "\(kind):\(filename):\(bytes)"
+    }
+}
+
 public struct DoctorIssue: Codable, Equatable, Identifiable {
     public var id: String { code }
     public let code: String
@@ -83,6 +142,10 @@ public struct DoctorIssue: Codable, Equatable, Identifiable {
     public let title: String
     public let detail: String
     public let repairable: Bool
+}
+
+private func shortIdentifier(_ value: String) -> String {
+    value.count <= 10 ? value : "\(String(value.prefix(8)))..."
 }
 
 public struct LaunchAgentStatus: Codable, Equatable {

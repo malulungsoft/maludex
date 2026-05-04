@@ -27,8 +27,24 @@ public struct DoctorRunner {
         return try JSONDecoder().decode(DoctorReport.self, from: Data(output.utf8))
     }
 
+    public func mobileHandoff(limit: Int = 5) async throws -> MobileHandoffReport {
+        try await ensureDoctorBuild()
+        let boundedLimit = max(1, min(limit, 50))
+        let output = try await runTool(
+            command: "node",
+            arguments: ["dist/bridge/src/mobile-handoff-cli.js", "--json", "--limit", "\(boundedLimit)"],
+            currentDirectory: repoRoot
+        )
+        return try JSONDecoder().decode(MobileHandoffReport.self, from: Data(output.utf8))
+    }
+
     public var redactedReportCommand: String {
         "node dist/bridge/src/doctor-cli.js --json"
+    }
+
+    public func mobileHandoffCommand(limit: Int = 5) -> String {
+        let boundedLimit = max(1, min(limit, 50))
+        return "node dist/bridge/src/mobile-handoff-cli.js --json --limit \(boundedLimit)"
     }
 
     private func ensureDoctorBuild() async throws {

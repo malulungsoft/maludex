@@ -2,6 +2,47 @@ import XCTest
 @testable import MaludexControlCenterCore
 
 final class DoctorReportTests: XCTestCase {
+    func testDecodesMobileHandoffReportAndBoundsPromptPreview() throws {
+        let json = """
+        {
+          "file": "/Users/example/.codex-iphone-remote-bridge/mobile-handoff.jsonl",
+          "entries": [
+            {
+              "schemaVersion": 1,
+              "id": "handoff-1",
+              "createdAt": "2026-05-05T01:02:03.000Z",
+              "source": "iphone",
+              "kind": "turn.start",
+              "threadId": "thread-1234567890",
+              "turnId": "turn-1",
+              "cwd": "/Users/example/App",
+              "model": "gpt-5.5",
+              "prompt": "Please review the iPhone handoff inbox and summarize next steps for the desktop user.",
+              "promptBytes": 83,
+              "attachments": [
+                {
+                  "kind": "image",
+                  "filename": "photo.png",
+                  "mimeType": "image/png",
+                  "bytes": 42
+                }
+              ]
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let report = try JSONDecoder().decode(MobileHandoffReport.self, from: json)
+
+        XCTAssertEqual(report.file, "/Users/example/.codex-iphone-remote-bridge/mobile-handoff.jsonl")
+        XCTAssertEqual(report.entries.count, 1)
+        XCTAssertEqual(report.entries[0].kind, "turn.start")
+        XCTAssertEqual(report.entries[0].attachments.first?.filename, "photo.png")
+        XCTAssertEqual(report.entries[0].promptPreview(maxCharacters: 24).count, 27)
+        XCTAssertTrue(report.entries[0].promptPreview(maxCharacters: 24).hasSuffix("..."))
+        XCTAssertEqual(report.entries[0].shortThreadId, "thread-1...")
+    }
+
     func testControlCenterCopyDefaultsToEnglishAndSupportsKorean() {
         XCTAssertEqual(ControlCenterLanguage.fallback, .english)
         XCTAssertEqual(ControlCenterCopy(language: .english).bridgeActionsTitle, "Bridge Actions")
@@ -120,5 +161,14 @@ final class DoctorReportTests: XCTestCase {
 
         XCTAssertEqual(resolved.executable, "/custom/bin/npm")
         XCTAssertEqual(resolved.argumentsPrefix, [])
+    }
+
+    func testDoctorRunnerExposesMobileHandoffCommand() {
+        let runner = DoctorRunner(repoRoot: URL(fileURLWithPath: "/Users/example/maludex"))
+
+        XCTAssertEqual(
+            runner.mobileHandoffCommand(limit: 5),
+            "node dist/bridge/src/mobile-handoff-cli.js --json --limit 5"
+        )
     }
 }

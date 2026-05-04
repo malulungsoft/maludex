@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.6 - 2026-05-05
+
+- Add a Mobile Handoff panel to the macOS Control Center so recent iPhone-authored prompts can be reviewed without terminal commands.
+- Decode handoff inbox JSON in the Control Center core target, including bounded prompt previews and attachment metadata.
+- Keep the handoff panel private/local with an explicit prompt-body warning.
+
 ## 0.6.5 - 2026-05-05
 
 - Add English/Korean language switching to the iPhone app, with English as the default.

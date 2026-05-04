@@ -6,8 +6,11 @@ struct ControlCenterView: View {
     @AppStorage("repoRoot") private var repoRoot = "\(FileManager.default.homeDirectoryForCurrentUser.path)/Documents/maludex"
     @AppStorage("languageCode") private var languageCode = ControlCenterLanguage.fallback.rawValue
     @State private var report: DoctorReport?
+    @State private var handoffReport: MobileHandoffReport?
     @State private var isBusy = false
+    @State private var isHandoffBusy = false
     @State private var errorMessage: String?
+    @State private var handoffError: String?
     @State private var qrImage: NSImage?
 
     private var runner: DoctorRunner {
@@ -29,6 +32,7 @@ struct ControlCenterView: View {
                         repoPicker
                         overviewGrid
                         actionPanel
+                        handoffPanel
                         issuesPanel
                         qrPanel
                     }
@@ -38,6 +42,7 @@ struct ControlCenterView: View {
         }
         .task {
             await refresh()
+            await refreshHandoff()
         }
         .alert("maludex \(copy.appSubtitle)", isPresented: Binding(
             get: { errorMessage != nil },
@@ -80,7 +85,10 @@ struct ControlCenterView: View {
 
             statusBadge
             Button {
-                Task { await refresh() }
+                Task {
+                    await refresh()
+                    await refreshHandoff()
+                }
             } label: {
                 Label(copy.refreshButton, systemImage: "arrow.clockwise")
             }
@@ -210,6 +218,73 @@ struct ControlCenterView: View {
         .background { panelBackground }
     }
 
+    private var handoffPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label(copy.mobileHandoffTitle, systemImage: "iphone.and.arrow.forward")
+                    .font(.system(size: 18, weight: .bold))
+                Spacer()
+                Button {
+                    Task { await refreshHandoff() }
+                } label: {
+                    if isHandoffBusy {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label(copy.refreshButton, systemImage: "arrow.clockwise")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isHandoffBusy)
+            }
+
+            Text(copy.mobileHandoffPrivacyWarning)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color(red: 0.69, green: 0.22, blue: 0.18))
+
+            if let handoffError {
+                Text(handoffError)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(red: 0.69, green: 0.22, blue: 0.18))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+            } else if let handoffReport {
+                if handoffReport.entries.isEmpty {
+                    Text(copy.mobileHandoffEmpty)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(handoffReport.entries) { entry in
+                            HandoffEntryRow(entry: entry, copy: copy)
+                        }
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Text(copy.mobileHandoffFileLabel)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(handoffReport.file)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
+            } else {
+                Text(copy.checkingValue)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(18)
+        .background { panelBackground }
+    }
+
     @ViewBuilder
     private var qrPanel: some View {
         if let qrImage {
@@ -256,6 +331,17 @@ struct ControlCenterView: View {
         }
     }
 
+    private func refreshHandoff() async {
+        isHandoffBusy = true
+        defer { isHandoffBusy = false }
+        do {
+            handoffReport = try await runner.mobileHandoff(limit: 5)
+            handoffError = nil
+        } catch {
+            handoffError = error.localizedDescription
+        }
+    }
+
     private func perform(_ action: ControlCenterAction) async {
         await runBusy {
             report = try await runner.run(action)
@@ -297,7 +383,10 @@ struct ControlCenterView: View {
         panel.directoryURL = URL(fileURLWithPath: repoRoot)
         if panel.runModal() == .OK, let url = panel.url {
             repoRoot = url.path
-            Task { await refresh() }
+            Task {
+                await refresh()
+                await refreshHandoff()
+            }
         }
     }
 
@@ -331,6 +420,84 @@ struct ControlCenterView: View {
         case .error:
             Color(red: 0.69, green: 0.22, blue: 0.18)
         }
+    }
+}
+
+private struct HandoffEntryRow: View {
+    let entry: MobileHandoffEntry
+    let copy: ControlCenterCopy
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(entry.kind)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color(red: 0.02, green: 0.45, blue: 0.40))
+                Text(entry.createdAt)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(copy.mobileHandoffThreadLabel) \(entry.shortThreadId)")
+                    .font(.caption.monospaced().weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(entry.promptPreview())
+                .font(.system(size: 14, weight: .medium))
+                .lineLimit(4)
+                .textSelection(.enabled)
+
+            HStack(spacing: 12) {
+                if let cwd = entry.cwd, !cwd.isEmpty {
+                    HandoffMetadataChip(label: copy.mobileHandoffCwdLabel, value: cwd)
+                }
+                if let model = entry.model, !model.isEmpty {
+                    HandoffMetadataChip(label: copy.mobileHandoffModelLabel, value: model)
+                }
+                if !entry.attachments.isEmpty {
+                    HandoffMetadataChip(
+                        label: copy.mobileHandoffAttachmentsLabel,
+                        value: "\(entry.attachments.count)"
+                    )
+                }
+            }
+
+            if !entry.attachments.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(entry.attachments) { attachment in
+                        Label(
+                            "\(attachment.filename) · \(attachment.kind) · \(ByteCountFormatter.string(fromByteCount: Int64(attachment.bytes), countStyle: .file))",
+                            systemImage: attachment.kind == "image" ? "photo" : "doc"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct HandoffMetadataChip: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+        }
+        .font(.caption.weight(.semibold))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.white.opacity(0.55), in: Capsule())
     }
 }
 

@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.6.5`
+Current version: `v0.6.6`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 
@@ -210,6 +210,11 @@ Common recovery paths:
 maludex saves iPhone-authored prompts to a private handoff inbox so the desktop
 Codex session can explicitly recover mobile instructions that were sent through
 the bridge but not live-injected into an already open desktop conversation.
+
+The macOS Control Center shows a **Mobile Handoff** panel with the latest
+iPhone-authored requests, prompt previews, metadata, and attachment counts. This
+panel reads the same private inbox file and can display prompt bodies, so do not
+share screenshots or copied output publicly.
 
 ```bash
 npm run handoff -- --limit 10
