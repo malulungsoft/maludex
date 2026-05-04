@@ -3,6 +3,7 @@ dist/
 coverage/
 .swiftpm/
 .build/
+.tmp/
 DerivedData/
 build/
 *.xcresult

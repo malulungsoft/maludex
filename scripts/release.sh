@@ -109,7 +109,9 @@ swiftc -parse-as-library \
   -o /tmp/maludex-transcript-store-tests
 /tmp/maludex-transcript-store-tests
 
-xcodebuild -project ios/CodexRemoteBridge/CodexRemoteBridge.xcodeproj -scheme CodexRemoteBridge -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+xcode_derived_data_path="${MALUDEX_XCODE_DERIVED_DATA_PATH:-${TMPDIR:-/tmp}/maludex-xcode-derived-data}"
+mkdir -p "$xcode_derived_data_path"
+xcodebuild -derivedDataPath "$xcode_derived_data_path" -project ios/CodexRemoteBridge/CodexRemoteBridge.xcodeproj -scheme CodexRemoteBridge -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 
 if [[ "$check_only" == "1" ]]; then
   echo "Release check passed for $tag"

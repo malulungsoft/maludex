@@ -294,6 +294,7 @@ private struct ProjectScreen: View {
     @State private var bridgeSwitcherPresented = false
     @State private var diagnosticsPresented = false
     @State private var controlsExpanded = false
+    @State private var chromeHidden = false
     @State private var historyAnchorId: TranscriptEntry.ID?
     @State private var canLoadOlderTranscript = false
     @StateObject private var speech = SpeechInputController()
@@ -304,15 +305,18 @@ private struct ProjectScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ProjectFloatingHeader(
-                isExpanded: $controlsExpanded,
-                showChats: { chatListPresented = true },
-                showNewProject: { newProjectPresented = true },
-                showSettings: { settingsPresented = true },
-                showSubagent: { subagentPresented = true },
-                showBridges: { bridgeSwitcherPresented = true },
-                showDiagnostics: { diagnosticsPresented = true }
-            )
+            if !chromeHidden || controlsExpanded {
+                ProjectFloatingHeader(
+                    isExpanded: $controlsExpanded,
+                    showChats: { chatListPresented = true },
+                    showNewProject: { newProjectPresented = true },
+                    showSettings: { settingsPresented = true },
+                    showSubagent: { subagentPresented = true },
+                    showBridges: { bridgeSwitcherPresented = true },
+                    showDiagnostics: { diagnosticsPresented = true }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -339,6 +343,12 @@ private struct ProjectScreen: View {
                         promptFocused = false
                     }
                 )
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 12)
+                        .onChanged { value in
+                            updateChromeVisibility(forDragTranslation: value.translation.height)
+                        }
+                )
                 .onChange(of: bridge.transcript.count) { _, _ in
                     if let historyAnchorId {
                         proxy.scrollTo(historyAnchorId, anchor: .top)
@@ -363,46 +373,52 @@ private struct ProjectScreen: View {
                 .onChange(of: bridge.threadId) { _, _ in
                     canLoadOlderTranscript = false
                     historyAnchorId = nil
+                    showChrome()
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppPalette.background)
         .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 0) {
-                if !bridge.promptQueue.isEmpty {
-                    PromptQueuePanel(
-                        items: bridge.promptQueue,
-                        moveUp: { bridge.moveQueuedPrompt($0, direction: -1) },
-                        moveDown: { bridge.moveQueuedPrompt($0, direction: 1) },
-                        cancel: { bridge.cancelQueuedPrompt($0) }
-                    )
-                    .padding(.horizontal)
-                    .padding(.top, 10)
-                    .padding(.bottom, 6)
-                }
-
-                if let approval = bridge.approvals.first {
-                    ApprovalCard(approval: approval)
+            if shouldShowBottomChrome {
+                VStack(spacing: 0) {
+                    if !bridge.promptQueue.isEmpty {
+                        PromptQueuePanel(
+                            items: bridge.promptQueue,
+                            moveUp: { bridge.moveQueuedPrompt($0, direction: -1) },
+                            moveDown: { bridge.moveQueuedPrompt($0, direction: 1) },
+                            cancel: { bridge.cancelQueuedPrompt($0) }
+                        )
                         .padding(.horizontal)
-                        .padding(.top, 10)
-                        .padding(.bottom, 6)
-                }
+                        .padding(.top, 8)
+                        .padding(.bottom, 4)
+                    }
 
-                PromptComposer(
-                    prompt: $prompt,
-                    promptFocused: $promptFocused,
-                    attachments: $attachments,
-                    photoItems: $photoItems,
-                    fileImporterPresented: $fileImporterPresented,
-                    voiceState: speech,
-                    toggleVoice: toggleVoice,
-                    send: sendPrompt,
-                    steer: steerPrompt
-                )
+                    if let approval = bridge.approvals.first {
+                        ApprovalCard(approval: approval)
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+                            .padding(.bottom, 4)
+                    }
+
+                    PromptComposer(
+                        prompt: $prompt,
+                        promptFocused: $promptFocused,
+                        attachments: $attachments,
+                        photoItems: $photoItems,
+                        fileImporterPresented: $fileImporterPresented,
+                        voiceState: speech,
+                        toggleVoice: toggleVoice,
+                        send: sendPrompt,
+                        steer: steerPrompt
+                    )
+                }
+                .background(AppPalette.panel)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .background(AppPalette.panel)
         }
+        .toolbar(.hidden, for: .navigationBar)
+        .animation(.easeInOut(duration: 0.18), value: chromeHidden)
         .sheet(isPresented: $newProjectPresented) {
             NewProjectSheet()
         }
@@ -434,6 +450,35 @@ private struct ProjectScreen: View {
         }
         .onChange(of: speech.transcript) { _, text in
             prompt = text
+        }
+        .onChange(of: promptFocused) { _, isFocused in
+            if isFocused {
+                showChrome()
+            }
+        }
+    }
+
+    private var shouldShowBottomChrome: Bool {
+        !chromeHidden || promptFocused || !prompt.isEmpty || !attachments.isEmpty || !bridge.approvals.isEmpty
+    }
+
+    private func updateChromeVisibility(forDragTranslation translationY: CGFloat) {
+        if translationY < -24 {
+            guard !promptFocused, prompt.isEmpty, attachments.isEmpty, bridge.approvals.isEmpty else {
+                return
+            }
+            withAnimation(.easeInOut(duration: 0.18)) {
+                controlsExpanded = false
+                chromeHidden = true
+            }
+        } else if translationY > 18 {
+            showChrome()
+        }
+    }
+
+    private func showChrome() {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            chromeHidden = false
         }
     }
 
@@ -552,7 +597,7 @@ private struct ProjectFloatingHeader: View {
     let showDiagnostics: () -> Void
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             HStack(spacing: 8) {
                 ProjectIdentity()
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -581,13 +626,14 @@ private struct ProjectFloatingHeader: View {
                     action: showSettings
                 )
             }
-            .padding(10)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
             .background(AppPalette.panel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(AppPalette.line, lineWidth: 1)
             )
-            .shadow(color: AppPalette.panelShadow, radius: 14, x: 0, y: 8)
+            .shadow(color: AppPalette.panelShadow, radius: 10, x: 0, y: 5)
 
             if isExpanded {
                 ProjectControlPanel(
@@ -600,9 +646,9 @@ private struct ProjectFloatingHeader: View {
                 .transition(.opacity)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 8)
-        .padding(.bottom, isExpanded ? 10 : 8)
+        .padding(.horizontal, 10)
+        .padding(.top, 4)
+        .padding(.bottom, isExpanded ? 8 : 5)
         .background(AppPalette.background.opacity(0.96))
         .frame(maxWidth: .infinity)
     }
@@ -612,19 +658,19 @@ private struct ProjectIdentity: View {
     @EnvironmentObject private var bridge: BridgeClient
 
     var body: some View {
-        HStack(spacing: 10) {
-            BrandMark(size: 32)
+        HStack(spacing: 8) {
+            BrandMark(size: 28)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(Brand.name)
-                    .font(.title3.weight(.heavy))
+                    .font(.headline.weight(.heavy))
                     .foregroundStyle(AppPalette.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.66)
                     .allowsTightening(true)
 
                 Text(bridge.activeBridgeLabel)
-                    .font(.caption.monospaced().weight(.semibold))
+                    .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.62)
@@ -644,9 +690,9 @@ private struct ProjectHeaderIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.title3.weight(.semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(AppPalette.accent)
-                .frame(width: 46, height: 46)
+                .frame(width: 40, height: 40)
                 .background(AppPalette.userBubble, in: Circle())
                 .overlay(Circle().stroke(AppPalette.line, lineWidth: 1))
                 .opacity(isEnabled ? 1 : 0.45)
@@ -1631,23 +1677,23 @@ private struct PromptComposer: View {
     let steer: () -> Void
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             ZStack(alignment: .topLeading) {
                 if prompt.isEmpty {
                     Text("Ask \(Brand.name)...")
-                        .font(.body)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 16)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
                         .allowsHitTesting(false)
                 }
 
                 TextEditor(text: $prompt)
                     .focused(promptFocused)
                     .scrollContentBackground(.hidden)
-                    .padding(8)
+                    .padding(6)
             }
-            .frame(minHeight: 64, maxHeight: 128)
+            .frame(minHeight: 50, maxHeight: 96)
             .background(AppPalette.input, in: RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
@@ -1700,7 +1746,7 @@ private struct PromptComposer: View {
                     steer()
                     promptFocused.wrappedValue = false
                 } label: {
-                    ComposerIconLabel(systemImage: "arrowshape.turn.up.right", width: 52)
+                    ComposerIconLabel(systemImage: "arrowshape.turn.up.right", width: 48)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Steer active turn")
@@ -1710,7 +1756,7 @@ private struct PromptComposer: View {
                     send()
                     promptFocused.wrappedValue = false
                 } label: {
-                    ComposerIconLabel(systemImage: "paperplane.fill", width: 58, isPrimary: true)
+                    ComposerIconLabel(systemImage: "paperplane.fill", width: 52, isPrimary: true)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Send")
@@ -1724,13 +1770,15 @@ private struct PromptComposer: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding()
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
     }
 }
 
 private struct ComposerIconLabel: View {
     let systemImage: String
-    var width: CGFloat = 48
+    var width: CGFloat = 42
     var isPrimary = false
     var tint: Color = AppPalette.accent
     var background: Color = AppPalette.userBubble
@@ -1738,16 +1786,16 @@ private struct ComposerIconLabel: View {
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.title3.weight(.semibold))
+            .font(.body.weight(.semibold))
             .foregroundStyle(isPrimary ? Color.white : tint)
-            .frame(width: width, height: 48)
-            .background(isPrimary ? AppPalette.accent : background, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .frame(width: width, height: 42)
+            .background(isPrimary ? AppPalette.accent : background, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: 21, style: .continuous)
                     .stroke(isPrimary ? Color.clear : AppPalette.line, lineWidth: 1)
             )
             .opacity(isEnabled ? 1 : 0.45)
-            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 21, style: .continuous))
     }
 }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 - 2026-05-05
+
+- Compact the iPhone chat header and prompt composer so more transcript content is visible on large phones.
+- Hide the project header and empty composer while scrolling through chat history, and restore them when scrolling back up or focusing input.
+- Keep approval cards, attachments, and drafted prompts visible so active work is not hidden during scrolling.
+
 ## 0.6.0 - 2026-05-05
 
 - Add a standalone SwiftUI macOS Control Center app for bridge health, endpoint, version, LaunchAgent, and token status.
