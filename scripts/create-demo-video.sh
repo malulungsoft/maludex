@@ -4,82 +4,68 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-DEVICE_NAME="${MALUDEX_DEMO_DEVICE:-iPhone 17 Pro}"
-SCHEME="${MALUDEX_DEMO_SCHEME:-CodexRemoteBridge}"
-BUNDLE_ID="${MALUDEX_DEMO_BUNDLE_ID:-com.local.CodexRemoteBridge}"
-DERIVED_DATA="${MALUDEX_DEMO_DERIVED_DATA:-/tmp/maludex-demo-derived}"
 OUT_DIR="${MALUDEX_DEMO_OUT_DIR:-$ROOT_DIR/media}"
-RAW_VIDEO="${MALUDEX_DEMO_RAW:-/tmp/maludex-simulator-demo.mov}"
 OUT_VIDEO="${MALUDEX_DEMO_OUT:-$OUT_DIR/maludex-simulator-demo.mp4}"
-DURATION="${MALUDEX_DEMO_DURATION:-60}"
+OUT_GIF="${MALUDEX_DEMO_GIF:-$OUT_DIR/maludex-simulator-demo.gif}"
+SCREENSHOT_DIR="${MALUDEX_DEMO_SCREENSHOT_DIR:-$OUT_DIR/screenshots}"
+FRAME_DURATION="${MALUDEX_DEMO_FRAME_DURATION:-1.8}"
+GIF_WIDTH="${MALUDEX_DEMO_GIF_WIDTH:-360}"
+MP4_HEIGHT="${MALUDEX_DEMO_MP4_HEIGHT:-1920}"
+MP4_CRF="${MALUDEX_DEMO_MP4_CRF:-24}"
 
 mkdir -p "$OUT_DIR"
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
-  echo "ffmpeg is required to compress the simulator recording."
+  echo "ffmpeg is required to build the README demo media."
   exit 1
 fi
 
-DEVICE_ID="$(xcrun simctl list devices available \
-  | grep -F "$DEVICE_NAME (" \
-  | head -n 1 \
-  | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')"
+screenshots=(
+  pairing
+  connected-home
+  session-controls
+  streaming-turn
+  approval-card
+  bridge-switcher
+)
 
-if [ -z "$DEVICE_ID" ]; then
-  echo "Could not find an available Simulator named: $DEVICE_NAME"
-  echo "Set MALUDEX_DEMO_DEVICE to one of:"
-  xcrun simctl list devices available
-  exit 1
-fi
-
-xcodebuild \
-  -project ios/CodexRemoteBridge/CodexRemoteBridge.xcodeproj \
-  -scheme "$SCHEME" \
-  -destination "platform=iOS Simulator,id=$DEVICE_ID" \
-  -derivedDataPath "$DERIVED_DATA" \
-  build >/tmp/maludex-demo-xcodebuild.log
-
-APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/CodexRemoteBridge.app"
-if [ ! -d "$APP_PATH" ]; then
-  echo "Built app not found at: $APP_PATH"
-  echo "See /tmp/maludex-demo-xcodebuild.log"
-  exit 1
-fi
-
-xcrun simctl boot "$DEVICE_ID" >/dev/null 2>&1 || true
-open -a Simulator --args -CurrentDeviceUDID "$DEVICE_ID" >/dev/null 2>&1 || true
-xcrun simctl bootstatus "$DEVICE_ID" -b >/dev/null
-xcrun simctl ui "$DEVICE_ID" appearance light >/dev/null || true
-xcrun simctl status_bar "$DEVICE_ID" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 >/dev/null || true
-xcrun simctl uninstall "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
-xcrun simctl install "$DEVICE_ID" "$APP_PATH"
-xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
-
-rm -f "$RAW_VIDEO" "$OUT_VIDEO"
-xcrun simctl io "$DEVICE_ID" recordVideo --codec=h264 --force "$RAW_VIDEO" >/tmp/maludex-demo-record.out 2>/tmp/maludex-demo-record.err &
-RECORDER_PID=$!
-
-for _ in $(seq 1 30); do
-  if grep -q "Recording started" /tmp/maludex-demo-record.err 2>/dev/null; then
-    break
+for screenshot in "${screenshots[@]}"; do
+  if [ ! -f "$SCREENSHOT_DIR/$screenshot.png" ]; then
+    echo "Missing $SCREENSHOT_DIR/$screenshot.png"
+    echo "Capture the real app in iOS Simulator first, then rerun this script."
+    exit 1
   fi
-  sleep 0.2
 done
 
-xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID" --demo-video >/tmp/maludex-demo-launch.log
-sleep "$DURATION"
-kill -INT "$RECORDER_PID" >/dev/null 2>&1 || true
-wait "$RECORDER_PID" >/dev/null 2>&1 || true
+FRAMES_FILE="$(mktemp -t maludex-demo-frames.XXXXXX)"
+trap 'rm -f "$FRAMES_FILE"' EXIT
+
+for screenshot in "${screenshots[@]}"; do
+  printf "file '%s/%s.png'\n" "$SCREENSHOT_DIR" "$screenshot" >>"$FRAMES_FILE"
+  printf "duration %s\n" "$FRAME_DURATION" >>"$FRAMES_FILE"
+done
+
+last_index=$((${#screenshots[@]} - 1))
+printf "file '%s/%s.png'\n" "$SCREENSHOT_DIR" "${screenshots[$last_index]}" >>"$FRAMES_FILE"
 
 ffmpeg -y \
-  -i "$RAW_VIDEO" \
-  -t "$DURATION" \
-  -vf "scale=-2:1920,fps=30" \
+  -f concat \
+  -safe 0 \
+  -i "$FRAMES_FILE" \
+  -vf "fps=30,scale=-2:${MP4_HEIGHT}:flags=lanczos,format=yuv420p" \
   -c:v libx264 \
   -preset slow \
-  -crf 24 \
-  -pix_fmt yuv420p \
+  -crf "$MP4_CRF" \
   -movflags +faststart \
-  "$OUT_VIDEO" >/tmp/maludex-demo-ffmpeg.log 2>&1
+  "$OUT_VIDEO" >/tmp/maludex-demo-mp4.log 2>&1
+
+ffmpeg -y \
+  -f concat \
+  -safe 0 \
+  -i "$FRAMES_FILE" \
+  -filter_complex "[0:v]fps=8,scale=${GIF_WIDTH}:-1:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5" \
+  -loop 0 \
+  "$OUT_GIF" >/tmp/maludex-demo-gif.log 2>&1
 
 echo "$OUT_VIDEO"
+echo "$OUT_GIF"

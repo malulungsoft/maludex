@@ -8,11 +8,23 @@ The Mac bridge launches `codex app-server` over stdio JSONL and exposes a narrow
 
 This repository is an MVP. It is useful for private local/Tailscale workflows, but it should not be treated as hardened remote administration software.
 
-## Demo Video
+## Demo
 
-![60-second iOS Simulator demo](media/maludex-simulator-demo.gif)
+<p align="center">
+  <img src="media/maludex-simulator-demo.gif" alt="Short iOS Simulator demo of maludex pairing, project controls, streaming transcript, approvals, and bridge switching" width="360">
+</p>
 
-[Watch the MP4 version](media/maludex-simulator-demo.mp4).
+A short tour captured from the real SwiftUI app running in iOS Simulator is embedded above. [Watch the MP4 version](media/maludex-simulator-demo.mp4).
+
+## Screenshots
+
+| Pair bridge | Connected home | Tune session |
+| --- | --- | --- |
+| <img src="media/screenshots/pairing.png" alt="maludex pairing payload screen" width="160"> | <img src="media/screenshots/connected-home.png" alt="maludex connected home screen" width="160"> | <img src="media/screenshots/session-controls.png" alt="maludex project picker and session controls" width="160"> |
+
+| Stream a turn | Approve command | Switch Macs |
+| --- | --- | --- |
+| <img src="media/screenshots/streaming-turn.png" alt="maludex streaming Codex transcript on iPhone" width="160"> | <img src="media/screenshots/approval-card.png" alt="maludex approval request card for a command" width="160"> | <img src="media/screenshots/bridge-switcher.png" alt="maludex saved Mac bridge switcher" width="160"> |
 
 ## Features
 
@@ -141,7 +153,7 @@ Switching bridges closes the current WebSocket, restores that Mac's saved local 
 - `scripts/setup-local.sh`: local dependency and build setup.
 - `scripts/install-launch-agent.sh`: macOS LaunchAgent installer.
 - `scripts/configure-tailscale-bridge.sh`: private external access setup through Tailscale.
-- `scripts/create-demo-video.sh`: builds the iOS Simulator app and records the GitHub demo video.
+- `scripts/create-demo-video.sh`: rebuilds the README GIF and MP4 from real iOS Simulator screenshots.
 
 ## Development
 
@@ -151,7 +163,7 @@ npm run build
 npm test
 ```
 
-To rebuild the demo video:
+To rebuild the GIF and MP4 after refreshing screenshots from the real Simulator UI:
 
 ```bash
 ./scripts/create-demo-video.sh
