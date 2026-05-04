@@ -1,6 +1,6 @@
 # maludex
 
-Current version: `v0.1.4`
+Current version: `v0.2.0`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 
@@ -38,6 +38,7 @@ A short tour captured from the real SwiftUI app running in iOS Simulator is embe
 - Model, reasoning effort, permission mode, and context-compaction controls.
 - Image and file attachments copied into the selected workspace before a turn.
 - Subagent start, manual compact, approval response, and active-turn stop.
+- Diagnostics dashboard with bridge health, Codex status, runtime counters, and token-free copyable reports.
 - Integration tests with a mocked Codex app-server process.
 
 ## Security Warnings
@@ -163,6 +164,23 @@ prints or writes a new QR without printing the raw token. A running bridge
 detects the token file change and disconnects the currently paired iPhone; old
 QR codes stop working. In the iPhone app, use `Forget` on the old bridge entry
 and scan the new QR.
+
+## Diagnostics
+
+Open the project screen controls and tap **Diagnostics** to inspect bridge
+health from the iPhone. The dashboard shows app/bridge versions, endpoint,
+Codex process status, token-file validity, active turns, pending approvals,
+event replay counters, project root count, and uptime.
+
+Use **Copy report** when filing an issue. The report intentionally excludes
+bearer tokens, prompt bodies, transcript text, command bodies, and attachment
+contents.
+
+Common recovery paths:
+
+- `Cannot connect`: confirm the bridge is running and the iPhone can reach the Tailscale or Nginx address.
+- `Authentication failed`: forget the saved bridge and scan a fresh QR after token rotation.
+- `Codex not running`: confirm Codex is installed and logged in on the Mac.
 
 ## Multiple Macs
 

@@ -35,6 +35,7 @@ The maludex bridge is a Node.js + TypeScript process in `bridge/src`.
 - Creates new project directories only under configured roots.
 - Lists and resumes existing Codex desktop/app-server threads for mobile history browsing.
 - Applies mobile-selected model intelligence, bounded sandbox, approval, and auto-compaction settings to thread/resume/turn requests.
+- Reports token-free runtime diagnostics through `bridge.status`, including bridge version, Codex process state, token-file validity, event buffer counters, active turns, pending approvals, project root count, and uptime.
 - Starts manual compaction with `thread/compact/start`.
 - Starts subagents by forking the active thread with `thread/fork`, then sending a scoped `turn/start` to the forked thread.
 - Converts resumed thread turns into a narrow mobile transcript format, strips raw `turns` from mobile thread payloads, and truncates very large histories to a bounded recent window.
@@ -79,6 +80,7 @@ Client to bridge:
 { "id": "ios-m", "type": "model.list" }
 { "id": "ios-c", "type": "chat.list" }
 { "id": "ios-o", "type": "chat.open", "threadId": "thread-id", "model": "gpt-5.5", "transcriptLimit": 120 }
+{ "id": "ios-s", "type": "bridge.status" }
 { "id": "ios-2", "type": "turn.start", "threadId": "thread-id", "prompt": "...", "model": "gpt-5.5", "reasoningEffort": "high", "sandbox": "workspace-write" }
 { "id": "ios-k", "type": "thread.compact", "threadId": "thread-id" }
 { "id": "ios-a", "type": "subagent.start", "threadId": "thread-id", "role": "worker", "prompt": "Investigate the failing test." }
@@ -107,6 +109,7 @@ Bridge to client:
 
 ```json
 { "type": "bridge.ready", "protocolVersion": 1, "serverTime": "...", "lastEventId": 7 }
+{ "id": "ios-s", "type": "response", "ok": true, "result": { "bridgeVersion": "0.2.0", "codexRunning": true, "tokenFileValid": true } }
 { "id": "ios-1", "type": "response", "ok": true, "result": {} }
 { "id": "ios-c", "type": "response", "ok": true, "result": { "chats": [] } }
 { "id": "ios-o", "type": "response", "ok": true, "result": { "thread": {}, "transcript": [], "transcriptTruncation": { "truncated": false } } }

@@ -63,6 +63,10 @@ enum JSONValue: Codable, Equatable, CustomStringConvertible, Identifiable {
         return nil
     }
 
+    var intValue: Int? {
+        numberValue.map(Int.init)
+    }
+
     var arrayValue: [JSONValue]? {
         if case .array(let value) = self {
             return value

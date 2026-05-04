@@ -259,6 +259,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
+let maludexClientVersion = "0.2.0"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
@@ -318,6 +319,75 @@ func userFacingConnectionError(_ message: String) -> String {
     }
 
     return message
+}
+
+struct BridgeDiagnostics: Equatable {
+    let bridgeVersion: String
+    let protocolVersion: Int
+    let minClientProtocolVersion: Int
+    let host: String
+    let port: Int
+    let usesTLS: Bool
+    let tokenFileValid: Bool
+    let codexRunning: Bool
+    let connectedClient: Bool
+    let eventBufferSize: Int
+    let eventReplayLimit: Int
+    let activeTurnCount: Int
+    let pendingApprovalCount: Int
+    let projectRootCount: Int
+    let resumedThreadCount: Int
+    let uptimeSeconds: Int
+
+    var endpoint: String {
+        "\(usesTLS ? "wss" : "ws")://\(host):\(port)"
+    }
+
+    init?(json: [String: JSONValue]) {
+        guard let bridgeVersion = json["bridgeVersion"]?.stringValue,
+              let protocolVersion = json["protocolVersion"]?.intValue,
+              let host = json["host"]?.stringValue,
+              let port = json["port"]?.intValue else {
+            return nil
+        }
+        self.bridgeVersion = bridgeVersion
+        self.protocolVersion = protocolVersion
+        self.minClientProtocolVersion = json["minClientProtocolVersion"]?.intValue ?? 1
+        self.host = host
+        self.port = port
+        self.usesTLS = json["usesTLS"]?.boolValue ?? false
+        self.tokenFileValid = json["tokenFileValid"]?.boolValue ?? false
+        self.codexRunning = json["codexRunning"]?.boolValue ?? false
+        self.connectedClient = json["connectedClient"]?.boolValue ?? false
+        self.eventBufferSize = json["eventBufferSize"]?.intValue ?? 0
+        self.eventReplayLimit = json["eventReplayLimit"]?.intValue ?? 0
+        self.activeTurnCount = json["activeTurnCount"]?.intValue ?? 0
+        self.pendingApprovalCount = json["pendingApprovalCount"]?.intValue ?? 0
+        self.projectRootCount = json["projectRootCount"]?.intValue ?? 0
+        self.resumedThreadCount = json["resumedThreadCount"]?.intValue ?? 0
+        self.uptimeSeconds = json["uptimeSeconds"]?.intValue ?? 0
+    }
+
+    var diagnosticReport: String {
+        [
+            "maludex diagnostics",
+            "appVersion: \(maludexClientVersion)",
+            "bridgeVersion: \(bridgeVersion)",
+            "protocolVersion: \(protocolVersion)",
+            "minClientProtocolVersion: \(minClientProtocolVersion)",
+            "endpoint: \(endpoint)",
+            "pairingFileValid: \(tokenFileValid)",
+            "codexRunning: \(codexRunning)",
+            "connectedClient: \(connectedClient)",
+            "eventBufferSize: \(eventBufferSize)",
+            "eventReplayLimit: \(eventReplayLimit)",
+            "activeTurnCount: \(activeTurnCount)",
+            "pendingApprovalCount: \(pendingApprovalCount)",
+            "projectRootCount: \(projectRootCount)",
+            "resumedThreadCount: \(resumedThreadCount)",
+            "uptimeSeconds: \(uptimeSeconds)"
+        ].joined(separator: "\n")
+    }
 }
 
 struct ChatThreadOption: Identifiable, Equatable {

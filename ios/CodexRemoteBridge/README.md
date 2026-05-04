@@ -16,6 +16,7 @@ Implemented screens:
 - Session sheet for model intelligence, auto context compaction, and safe permission changes.
 - Touch-to-talk voice input and selectable/copyable transcript text.
 - Subagent launcher that forks the current thread and starts an isolated turn.
+- Diagnostics dashboard with copyable token-free bridge health reports.
 - Truncation notice when an existing desktop chat history is too large for a single mobile response.
 - Approval card with Approve and Deny only.
 

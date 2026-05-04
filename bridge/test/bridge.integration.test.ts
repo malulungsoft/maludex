@@ -169,6 +169,52 @@ test("rotating the token file invalidates old websocket credentials without rest
   await rm(temp, { recursive: true, force: true });
 });
 
+test("reports bridge diagnostics without prompt bodies or bearer tokens", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    projectRoots: [temp],
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const ws = await connect(`ws://${address.host}:${address.port}`, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(JSON.stringify({ id: "mobile-status", type: "bridge.status" }));
+  const response = await waitForMessage<Record<string, unknown>>(ws, (message) => message.id === "mobile-status");
+
+  expect(response).toMatchObject({
+    type: "response",
+    ok: true,
+    result: {
+      bridgeVersion: "0.2.0",
+      protocolVersion: 1,
+      host: "127.0.0.1",
+      port: address.port,
+      tokenFileValid: true,
+      codexRunning: true,
+      connectedClient: true,
+      activeTurnCount: 0,
+      pendingApprovalCount: 0,
+      projectRootCount: 1
+    }
+  });
+  expect(JSON.stringify(response)).not.toContain(token);
+
+  ws.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
 test("bridges authenticated iPhone messages to codex stdio JSONL and approval responses", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
   const reportFile = path.join(temp, "mock-report.jsonl");
@@ -201,7 +247,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.1.4"
+    bridgeVersion: "0.2.0"
   });
 
   ws.send(

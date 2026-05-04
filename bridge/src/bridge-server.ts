@@ -55,7 +55,7 @@ const DEFAULT_CHAT_TRANSCRIPT_BYTE_LIMIT = 768 * 1024;
 const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
-const BRIDGE_VERSION = "0.1.4";
+const BRIDGE_VERSION = "0.2.0";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 
@@ -102,6 +102,7 @@ export class BridgeServer {
   private readonly maxAttachmentsPerTurn: number;
   private nextEventId = 1;
   private readonly threadCwds = new Map<string, string>();
+  private readonly startedAt = Date.now();
 
   constructor(options: BridgeServerOptions) {
     this.host = options.host ?? "127.0.0.1";
@@ -302,6 +303,8 @@ export class BridgeServer {
         await this.loadChatHistory(ws, message);
       } else if (message.type === "ping") {
         this.sendOk(ws, message.id, { pong: true });
+      } else if (message.type === "bridge.status") {
+        this.sendBridgeStatus(ws, message);
       } else {
         this.sendError(ws, messageId(parsed), "unknown_type", `Unsupported message type: ${parsed.type}`);
       }
@@ -646,6 +649,45 @@ export class BridgeServer {
       transcriptBackwardsCursor: history.backwardsCursor,
       hasOlderTranscript: history.nextCursor !== null
     }));
+  }
+
+  private sendBridgeStatus(ws: WebSocket, message: Extract<MobileMessage, { type: "bridge.status" }>): void {
+    const address = this.address();
+    const status = {
+      bridgeVersion: BRIDGE_VERSION,
+      protocolVersion: MOBILE_PROTOCOL_VERSION,
+      minClientProtocolVersion: MIN_CLIENT_PROTOCOL_VERSION,
+      host: address.host,
+      port: address.port,
+      usesTLS: false,
+      tokenFileValid: this.isTokenFileValid(),
+      codexRunning: this.codex.isRunning(),
+      connectedClient: this.mobile?.readyState === WebSocket.OPEN,
+      eventBufferSize: this.eventBuffer.length,
+      eventReplayLimit: this.eventReplayLimit,
+      activeTurnCount: this.activeTurns.size,
+      pendingApprovalCount: this.pendingApprovals.size,
+      projectRootCount: this.projectRoots.length,
+      resumedThreadCount: this.resumedThreads.size,
+      uptimeSeconds: Math.max(0, Math.floor((Date.now() - this.startedAt) / 1000))
+    };
+    this.logger.info("mobile.bridge_status", {
+      id: message.id,
+      connectedClient: status.connectedClient,
+      codexRunning: status.codexRunning,
+      activeTurnCount: status.activeTurnCount,
+      pendingApprovalCount: status.pendingApprovalCount
+    });
+    this.sendOk(ws, message.id, asJsonValue(status));
+  }
+
+  private isTokenFileValid(): boolean {
+    try {
+      loadCapabilityTokenFromFile(this.tokenFile);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private handleCodexNotification(message: JsonValue): void {

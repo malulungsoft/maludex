@@ -99,6 +99,10 @@ export class CodexRpcClient extends EventEmitter {
     });
   }
 
+  isRunning(): boolean {
+    return this.child !== null;
+  }
+
   request(method: string, params?: JsonValue): Promise<JsonValue> {
     const id = this.nextId++;
     const message = params === undefined ? { id, method } : { id, method, params };

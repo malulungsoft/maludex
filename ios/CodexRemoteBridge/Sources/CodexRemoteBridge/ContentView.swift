@@ -292,6 +292,7 @@ private struct ProjectScreen: View {
     @State private var settingsPresented = false
     @State private var subagentPresented = false
     @State private var bridgeSwitcherPresented = false
+    @State private var diagnosticsPresented = false
     @State private var controlsExpanded = false
     @State private var historyAnchorId: TranscriptEntry.ID?
     @State private var canLoadOlderTranscript = false
@@ -309,7 +310,8 @@ private struct ProjectScreen: View {
                 showNewProject: { newProjectPresented = true },
                 showSettings: { settingsPresented = true },
                 showSubagent: { subagentPresented = true },
-                showBridges: { bridgeSwitcherPresented = true }
+                showBridges: { bridgeSwitcherPresented = true },
+                showDiagnostics: { diagnosticsPresented = true }
             )
 
             ScrollViewReader { proxy in
@@ -401,6 +403,9 @@ private struct ProjectScreen: View {
         }
         .sheet(isPresented: $bridgeSwitcherPresented) {
             BridgeSwitcherSheet()
+        }
+        .sheet(isPresented: $diagnosticsPresented) {
+            DiagnosticsSheet()
         }
         .fileImporter(isPresented: $fileImporterPresented, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             switch result {
@@ -518,6 +523,7 @@ private struct ProjectFloatingHeader: View {
     let showSettings: () -> Void
     let showSubagent: () -> Void
     let showBridges: () -> Void
+    let showDiagnostics: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
@@ -561,7 +567,8 @@ private struct ProjectFloatingHeader: View {
                     showNewProject: showNewProject,
                     showSettings: showSettings,
                     showSubagent: showSubagent,
-                    showBridges: showBridges
+                    showBridges: showBridges,
+                    showDiagnostics: showDiagnostics
                 )
                 .transition(.opacity)
             }
@@ -622,10 +629,20 @@ private struct ProjectControlPanel: View {
     let showSettings: () -> Void
     let showSubagent: () -> Void
     let showBridges: () -> Void
+    let showDiagnostics: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
+                Button {
+                    showDiagnostics()
+                } label: {
+                    Label("Diagnostics", systemImage: "stethoscope")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Diagnostics")
+
                 Button {
                     showBridges()
                 } label: {
@@ -893,6 +910,125 @@ private struct BridgeSwitcherSheet: View {
                 }
             }
         }
+    }
+}
+
+private struct DiagnosticsSheet: View {
+    @EnvironmentObject private var bridge: BridgeClient
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Connection") {
+                    DiagnosticRow(title: "App version", value: maludexClientVersion)
+                    DiagnosticRow(title: "State", value: bridge.connectionState.rawValue)
+                    DiagnosticRow(title: "Bridge", value: bridge.activeBridgeLabel)
+                    DiagnosticRow(title: "Active thread", value: bridge.activeThreadLabel)
+                }
+
+                if let diagnostics = bridge.diagnostics {
+                    Section("Bridge") {
+                        DiagnosticRow(title: "Bridge version", value: diagnostics.bridgeVersion)
+                        DiagnosticRow(title: "Endpoint", value: diagnostics.endpoint)
+                        DiagnosticRow(title: "Protocol", value: "\(diagnostics.protocolVersion)")
+                        DiagnosticRow(title: "Token file", value: diagnostics.tokenFileValid ? "valid" : "check required")
+                        DiagnosticRow(title: "Codex", value: diagnostics.codexRunning ? "running" : "not running")
+                    }
+
+                    Section("Runtime") {
+                        DiagnosticRow(title: "Connected client", value: diagnostics.connectedClient ? "yes" : "no")
+                        DiagnosticRow(title: "Active turns", value: "\(diagnostics.activeTurnCount)")
+                        DiagnosticRow(title: "Pending approvals", value: "\(diagnostics.pendingApprovalCount)")
+                        DiagnosticRow(title: "Event buffer", value: "\(diagnostics.eventBufferSize)/\(diagnostics.eventReplayLimit)")
+                        DiagnosticRow(title: "Project roots", value: "\(diagnostics.projectRootCount)")
+                        DiagnosticRow(title: "Uptime", value: durationText(diagnostics.uptimeSeconds))
+                    }
+
+                    Section("Report") {
+                        Text(diagnostics.diagnosticReport)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                        Button {
+                            UIPasteboard.general.string = diagnostics.diagnosticReport
+                        } label: {
+                            Label("Copy report", systemImage: "doc.on.doc")
+                        }
+                    }
+                } else {
+                    Section {
+                        Text("No diagnostics loaded yet.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Recovery") {
+                    RecoveryHint(
+                        title: "Cannot connect",
+                        detail: "Check that the Mac bridge is running and the iPhone can reach the paired Tailscale or Nginx address."
+                    )
+                    RecoveryHint(
+                        title: "Authentication failed",
+                        detail: "The token may have rotated. Forget this bridge on iPhone and scan the new QR."
+                    )
+                    RecoveryHint(
+                        title: "Codex not running",
+                        detail: "Open the Mac and confirm Codex is installed and logged in."
+                    )
+                }
+            }
+            .navigationTitle("Diagnostics")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        bridge.refreshDiagnostics()
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(!bridge.isConnected)
+                }
+            }
+            .onAppear {
+                bridge.refreshDiagnostics()
+            }
+        }
+    }
+}
+
+private struct DiagnosticRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+            Spacer()
+            Text(value)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+                .textSelection(.enabled)
+        }
+    }
+}
+
+private struct RecoveryHint: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(detail)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 3)
     }
 }
 
@@ -2172,6 +2308,16 @@ private func relativeTime(_ timestamp: Double) -> String {
     let formatter = RelativeDateTimeFormatter()
     formatter.unitsStyle = .short
     return formatter.localizedString(for: Date(timeIntervalSince1970: timestamp), relativeTo: Date())
+}
+
+private func durationText(_ seconds: Int) -> String {
+    if seconds < 60 {
+        return "\(seconds)s"
+    }
+    if seconds < 3600 {
+        return "\(seconds / 60)m"
+    }
+    return "\(seconds / 3600)h \((seconds % 3600) / 60)m"
 }
 
 private func reasoningTitle(_ value: String) -> String {

@@ -67,6 +67,7 @@ final class BridgeClient: ObservableObject {
     @Published private(set) var savedPairingLabel: String?
     @Published private(set) var savedBridges: [SavedBridge] = []
     @Published private(set) var activeBridgeId = ""
+    @Published private(set) var diagnostics: BridgeDiagnostics?
     @Published var selectedProjectPath = "" {
         didSet { persistSnapshot() }
     }
@@ -365,6 +366,13 @@ final class BridgeClient: ObservableObject {
         send([
             "id": .string(nextMessageId(prefix: "ios-chats")),
             "type": .string("chat.list")
+        ])
+    }
+
+    func refreshDiagnostics() {
+        send([
+            "id": .string(nextMessageId(prefix: "ios-status")),
+            "type": .string("bridge.status")
         ])
     }
 
@@ -707,6 +715,10 @@ final class BridgeClient: ObservableObject {
                 handleChatList(object)
                 return
             }
+            if id.hasPrefix("ios-status") {
+                handleBridgeStatus(object)
+                return
+            }
             if id.hasPrefix("ios-open-chat") {
                 handleChatOpened(object)
                 return
@@ -797,6 +809,15 @@ final class BridgeClient: ObservableObject {
         } ?? []
         chats = decoded
         appendEvent("chats", "\(decoded.count)")
+    }
+
+    private func handleBridgeStatus(_ object: [String: JSONValue]) {
+        guard let result = object["result"]?.objectValue,
+              let decoded = BridgeDiagnostics(json: result) else {
+            return
+        }
+        diagnostics = decoded
+        appendEvent("diagnostics", "bridge \(decoded.bridgeVersion)")
     }
 
     private func handleChatOpened(_ object: [String: JSONValue]) {

@@ -38,6 +38,7 @@ There is no cloud relay in this MVP.
 | Subagent changes outside the intended project | Mobile subagents are forked from the active thread and inherit the same safe mobile-selected sandbox and approval policy. |
 | Project picker leaks too much path metadata | Project listing is limited to configured roots and recent Codex thread working directories, and requires the bearer token. |
 | Chat list leaks private conversation metadata | Chat listing and history loading require the bearer token and are never exposed through unauthenticated WebSocket connections. |
+| Diagnostics leak secrets | `bridge.status` returns operational metadata only. It does not include bearer tokens, prompt bodies, command bodies, transcript text, or attachment contents. |
 | Paired iPhone leaks persisted content | iOS stores the capability token in Keychain and stores session metadata plus recent transcript locally; the pairing screen has a `Forget` control to clear this device state. |
 | One paired PC token grants access to another PC | Each saved bridge has a separate Keychain token keyed by bridge endpoint. Switching bridges uses that bridge's token only, and local transcript snapshots are restored from the active bridge ID. |
 | Oversized desktop history crashes or disconnects mobile client | `chat.open` strips raw `thread.turns`, bounds transcript entries/bytes, and reports truncation metadata to the iOS client. |

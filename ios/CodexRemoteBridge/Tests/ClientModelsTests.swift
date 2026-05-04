@@ -138,6 +138,25 @@ struct ClientModelsTests {
             userFacingConnectionError("The Internet connection appears to be offline.").contains("Mac bridge"),
             "offline connection errors should explain bridge reachability"
         )
+        let diagnostics = BridgeDiagnostics(json: [
+            "bridgeVersion": .string("0.2.0"),
+            "protocolVersion": .number(1),
+            "host": .string("maludex.example.com"),
+            "port": .number(443),
+            "usesTLS": .bool(true),
+            "tokenFileValid": .bool(true),
+            "codexRunning": .bool(true),
+            "connectedClient": .bool(true),
+            "eventBufferSize": .number(12),
+            "activeTurnCount": .number(1),
+            "pendingApprovalCount": .number(0),
+            "projectRootCount": .number(2),
+            "uptimeSeconds": .number(42)
+        ])
+        require(diagnostics?.bridgeVersion == "0.2.0", "diagnostics should decode bridge version")
+        require(diagnostics?.endpoint == "wss://maludex.example.com:443", "diagnostics should expose endpoint")
+        require(diagnostics?.diagnosticReport.contains("token") == false, "diagnostics report should not include bearer token material")
+        require(diagnostics?.diagnosticReport.contains("bridgeVersion: 0.2.0") == true, "diagnostics report should be copyable")
 
         let preferences = MemoryPreferencesStore()
         let secrets = MemorySecretStore()

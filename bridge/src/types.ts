@@ -91,6 +91,10 @@ export type MobileMessage =
     }
   | {
       id?: string;
+      type: "bridge.status";
+    }
+  | {
+      id?: string;
       type: "project.list";
     }
   | {

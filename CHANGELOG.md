@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 - 2026-05-04
+
+- Add `bridge.status` diagnostics with bridge version, Codex process status, token-file validity, runtime counters, and uptime.
+- Add an iOS diagnostics dashboard with refresh, recovery hints, and token-free copyable reports.
+- Log diagnostics requests as metadata only.
+
 ## 0.1.4 - 2026-05-04
 
 - Add `npm run rotate-token` to replace the bridge pairing token and generate a fresh QR.
