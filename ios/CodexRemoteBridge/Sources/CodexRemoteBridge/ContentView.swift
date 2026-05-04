@@ -304,6 +304,8 @@ private struct ProjectScreen: View {
     @State private var controlsExpanded = false
     @State private var chromeHidden = false
     @State private var historyAnchorId: TranscriptEntry.ID?
+    @State private var transcriptSearchPresented = false
+    @State private var requestedTranscriptSearchTarget: TranscriptEntry.ID?
     @State private var canLoadOlderTranscript = false
     @StateObject private var speech = SpeechInputController()
     @FocusState private var promptFocused: Bool
@@ -337,6 +339,9 @@ private struct ProjectScreen: View {
                                 if canLoadOlderTranscript {
                                     bridge.loadOlderTranscript()
                                 }
+                            },
+                            search: {
+                                transcriptSearchPresented = true
                             }
                         )
                     }
@@ -358,6 +363,13 @@ private struct ProjectScreen: View {
                         }
                 )
                 .onChange(of: bridge.transcript.count) { _, _ in
+                    if let target = requestedTranscriptSearchTarget {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(target, anchor: .center)
+                        }
+                        requestedTranscriptSearchTarget = nil
+                        return
+                    }
                     if let historyAnchorId {
                         proxy.scrollTo(historyAnchorId, anchor: .top)
                         self.historyAnchorId = nil
@@ -381,7 +393,15 @@ private struct ProjectScreen: View {
                 .onChange(of: bridge.threadId) { _, _ in
                     canLoadOlderTranscript = false
                     historyAnchorId = nil
+                    requestedTranscriptSearchTarget = nil
                     showChrome()
+                }
+                .onChange(of: requestedTranscriptSearchTarget) { _, target in
+                    guard let target else { return }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(target, anchor: .center)
+                    }
+                    requestedTranscriptSearchTarget = nil
                 }
             }
         }
@@ -444,6 +464,13 @@ private struct ProjectScreen: View {
         }
         .sheet(isPresented: $diagnosticsPresented) {
             DiagnosticsSheet()
+        }
+        .sheet(isPresented: $transcriptSearchPresented) {
+            TranscriptSearchSheet(entries: bridge.transcript) { entry in
+                requestedTranscriptSearchTarget = entry.id
+                transcriptSearchPresented = false
+                showChrome()
+            }
         }
         .fileImporter(isPresented: $fileImporterPresented, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             switch result {
@@ -1725,6 +1752,7 @@ private struct TranscriptView: View {
     let hasOlder: Bool
     let isLoadingOlder: Bool
     let loadOlder: () -> Void
+    let search: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1732,6 +1760,18 @@ private struct TranscriptView: View {
                 Text(bridge.copy.conversationTitle)
                     .font(.headline)
                 Spacer()
+                Button(action: search) {
+                    Label(bridge.copy.searchConversationTitle, systemImage: "magnifyingglass")
+                        .labelStyle(.iconOnly)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(AppPalette.accent)
+                        .frame(width: 36, height: 36)
+                        .background(AppPalette.userBubble, in: Circle())
+                        .overlay(Circle().stroke(AppPalette.line, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(bridge.copy.searchConversationTitle)
+                .disabled(entries.isEmpty)
             }
 
             if entries.isEmpty {
@@ -1752,6 +1792,95 @@ private struct TranscriptView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct TranscriptSearchSheet: View {
+    @EnvironmentObject private var bridge: BridgeClient
+    @Environment(\.dismiss) private var dismiss
+    let entries: [TranscriptEntry]
+    let select: (TranscriptEntry) -> Void
+    @State private var query = ""
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if results.isEmpty {
+                    ContentUnavailableView(
+                        bridge.copy.noSearchResultsTitle,
+                        systemImage: "magnifyingglass",
+                        description: Text(bridge.copy.searchConversationTitle)
+                    )
+                }
+
+                ForEach(results) { result in
+                    Button {
+                        select(result.entry)
+                        dismiss()
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                Text(roleLabel(result.role))
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(roleColor(result.role))
+                                Spacer()
+                                Text(messageRelativeTime(from: result.entry.createdAt))
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Text(result.preview)
+                                .font(.subheadline)
+                                .foregroundStyle(AppPalette.ink)
+                                .lineLimit(3)
+
+                            if !result.entry.attachments.isEmpty {
+                                Label("\(result.entry.attachments.count) \(bridge.copy.attachmentsTitle)", systemImage: "paperclip")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .navigationTitle(bridge.copy.searchConversationTitle)
+            .searchable(text: $query, prompt: bridge.copy.searchConversationTitle)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(bridge.copy.closeButton) {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private var results: [TranscriptSearchResult] {
+        transcriptSearchResults(entries: entries, query: query)
+    }
+
+    private func roleLabel(_ role: TranscriptRole) -> String {
+        switch role {
+        case .user:
+            return bridge.copy.youLabel
+        case .assistant:
+            return Brand.name
+        case .system:
+            return bridge.copy.threadLabel
+        }
+    }
+
+    private func roleColor(_ role: TranscriptRole) -> Color {
+        switch role {
+        case .user:
+            return AppPalette.accent
+        case .assistant:
+            return AppPalette.ink
+        case .system:
+            return .secondary
+        }
     }
 }
 

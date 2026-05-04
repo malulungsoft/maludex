@@ -404,6 +404,8 @@ struct AppCopy: Equatable {
     var approvalsTitle: String { text("Approvals", "승인") }
     var mobileSecurityNote: String { text("Full access and never-approve are unavailable on mobile.", "모바일에서는 전체 접근과 무승인 모드를 사용할 수 없습니다.") }
     var conversationTitle: String { text("Conversation", "대화") }
+    var searchConversationTitle: String { text("Search conversation", "대화 검색") }
+    var noSearchResultsTitle: String { text("No matches", "검색 결과 없음") }
     var noTranscriptTitle: String { text("No transcript yet", "아직 대화가 없습니다") }
     var noTranscriptSubtitle: String { text("Ready for a new turn.", "새 작업을 시작할 준비가 됐습니다.") }
     var streamingTitle: String { text("Streaming", "응답 중") }
@@ -768,6 +770,60 @@ func messageRelativeTime(from date: Date, now: Date = Date()) -> String {
     }
 
     return "\(months / 12)년 전"
+}
+
+struct TranscriptSearchResult: Identifiable, Equatable {
+    let entry: TranscriptEntry
+    let preview: String
+
+    var id: UUID {
+        entry.id
+    }
+
+    var role: TranscriptRole {
+        entry.role
+    }
+}
+
+func transcriptSearchResults(entries: [TranscriptEntry], query: String) -> [TranscriptSearchResult] {
+    let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalizedQuery.isEmpty else {
+        return []
+    }
+
+    return entries.compactMap { entry in
+        let attachmentText = entry.attachments.map(\.filename).joined(separator: " ")
+        let haystack = [entry.text, attachmentText, entry.threadId ?? "", entry.turnId ?? ""]
+            .joined(separator: " ")
+        guard haystack.localizedCaseInsensitiveContains(normalizedQuery) else {
+            return nil
+        }
+        return TranscriptSearchResult(entry: entry, preview: transcriptSearchPreview(for: entry, query: normalizedQuery))
+    }
+}
+
+private func transcriptSearchPreview(for entry: TranscriptEntry, query: String, radius: Int = 72) -> String {
+    let text = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let normalized = text.isEmpty
+        ? entry.attachments.map(\.filename).joined(separator: ", ")
+        : text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    guard !normalized.isEmpty else {
+        return query
+    }
+
+    guard let range = normalized.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) else {
+        return String(normalized.prefix(radius * 2))
+    }
+
+    let lowerDistance = normalized.distance(from: normalized.startIndex, to: range.lowerBound)
+    let upperDistance = normalized.distance(from: normalized.startIndex, to: range.upperBound)
+    let startOffset = max(0, lowerDistance - radius)
+    let endOffset = min(normalized.count, upperDistance + radius)
+    let start = normalized.index(normalized.startIndex, offsetBy: startOffset)
+    let end = normalized.index(normalized.startIndex, offsetBy: endOffset)
+    let prefix = startOffset > 0 ? "..." : ""
+    let suffix = endOffset < normalized.count ? "..." : ""
+    return "\(prefix)\(String(normalized[start..<end]))\(suffix)"
 }
 
 struct BridgeDiagnostics: Equatable {

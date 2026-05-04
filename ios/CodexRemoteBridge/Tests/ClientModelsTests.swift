@@ -41,6 +41,8 @@ struct ClientModelsTests {
         require(AppCopy(language: .english).mobileHandoffRetentionTitle == "Mobile handoff retention", "handoff retention copy should be available")
         require(AppCopy(language: .english).queuedPromptsTitle == "Queued prompts", "queued prompt diagnostics copy should be available")
         require(AppCopy(language: .korean).queuedPromptsTitle == "대기 중 프롬프트", "Korean queued prompt diagnostics copy should be available")
+        require(AppCopy(language: .english).searchConversationTitle == "Search conversation", "conversation search copy should be available")
+        require(AppCopy(language: .korean).noSearchResultsTitle == "검색 결과 없음", "Korean empty search copy should be available")
         require(AppCopy(languageCode: "bad").settingsTitle == "Settings", "invalid language code should fall back to English")
 
         let queueItem = PromptQueueItem(json: [
@@ -122,6 +124,23 @@ struct ClientModelsTests {
         require(messageRelativeTime(from: Date(timeIntervalSince1970: 880), now: now) == "2분 전", "message time should show minutes")
         require(messageRelativeTime(from: Date(timeIntervalSince1970: 1_000 - 7_200), now: now) == "2시간 전", "message time should show hours")
         require(messageRelativeTime(from: Date(timeIntervalSince1970: 1_000 - 172_800), now: now) == "2일 전", "message time should show days")
+
+        let searchableEntries = [
+            TranscriptEntry(role: .user, text: "Please inspect the release checklist."),
+            TranscriptEntry(
+                role: .assistant,
+                text: "The build passed.",
+                attachments: [
+                    TranscriptAttachment(kind: .file, filename: "release-notes.md", mimeType: "text/markdown", byteCount: 10)
+                ]
+            ),
+            TranscriptEntry(role: .system, text: "Thread opened")
+        ]
+        let textMatches = transcriptSearchResults(entries: searchableEntries, query: "release")
+        require(textMatches.count == 2, "transcript search should match text and attachment filenames")
+        require(textMatches.first?.role == .user, "transcript search should preserve matching entry role")
+        require(textMatches.first?.preview.contains("release checklist") == true, "transcript search should expose a readable preview")
+        require(transcriptSearchResults(entries: searchableEntries, query: "   ").isEmpty, "empty transcript search should not return results")
 
         let attachment = MobileAttachment(
             kind: .file,

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add iPhone transcript search with Korean/English copy, attachment filename matches, and tap-to-scroll results.
+
 ## 0.7.0 - 2026-05-05
 
 - Add searchable iPhone project and model picker sheets, including model capability badges.
