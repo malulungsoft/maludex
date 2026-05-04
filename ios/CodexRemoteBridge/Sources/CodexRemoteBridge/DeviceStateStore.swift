@@ -81,6 +81,7 @@ struct PersistedDeviceState: Codable, Equatable {
     var selectedReasoningEffort: String
     var selectedApprovalPolicy: String
     var selectedSandbox: String
+    var languageCode: String
     var autoCompactEnabled: Bool
     var autoCompactTokenLimit: Int
     var threadId: String
@@ -100,6 +101,7 @@ struct PersistedDeviceState: Codable, Equatable {
         case selectedReasoningEffort
         case selectedApprovalPolicy
         case selectedSandbox
+        case languageCode
         case autoCompactEnabled
         case autoCompactTokenLimit
         case threadId
@@ -120,6 +122,7 @@ struct PersistedDeviceState: Codable, Equatable {
         selectedReasoningEffort: ReasoningEffortOption.fallback,
         selectedApprovalPolicy: ApprovalPolicyOption.onRequest.rawValue,
         selectedSandbox: SandboxOption.readOnly.rawValue,
+        languageCode: AppLanguage.fallback.rawValue,
         autoCompactEnabled: true,
         autoCompactTokenLimit: 120000,
         threadId: "",
@@ -140,6 +143,7 @@ struct PersistedDeviceState: Codable, Equatable {
         selectedReasoningEffort: String,
         selectedApprovalPolicy: String,
         selectedSandbox: String,
+        languageCode: String = AppLanguage.fallback.rawValue,
         autoCompactEnabled: Bool,
         autoCompactTokenLimit: Int,
         threadId: String,
@@ -158,6 +162,7 @@ struct PersistedDeviceState: Codable, Equatable {
         self.selectedReasoningEffort = selectedReasoningEffort
         self.selectedApprovalPolicy = selectedApprovalPolicy
         self.selectedSandbox = selectedSandbox
+        self.languageCode = AppLanguage(rawValue: languageCode)?.rawValue ?? AppLanguage.fallback.rawValue
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactTokenLimit = autoCompactTokenLimit
         self.threadId = threadId
@@ -179,6 +184,8 @@ struct PersistedDeviceState: Codable, Equatable {
         self.selectedReasoningEffort = try container.decodeIfPresent(String.self, forKey: .selectedReasoningEffort) ?? ReasoningEffortOption.fallback
         self.selectedApprovalPolicy = try container.decodeIfPresent(String.self, forKey: .selectedApprovalPolicy) ?? ApprovalPolicyOption.onRequest.rawValue
         self.selectedSandbox = try container.decodeIfPresent(String.self, forKey: .selectedSandbox) ?? SandboxOption.readOnly.rawValue
+        let decodedLanguageCode = try container.decodeIfPresent(String.self, forKey: .languageCode) ?? AppLanguage.fallback.rawValue
+        self.languageCode = AppLanguage(rawValue: decodedLanguageCode)?.rawValue ?? AppLanguage.fallback.rawValue
         self.autoCompactEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoCompactEnabled) ?? true
         self.autoCompactTokenLimit = try container.decodeIfPresent(Int.self, forKey: .autoCompactTokenLimit) ?? 120000
         self.threadId = try container.decodeIfPresent(String.self, forKey: .threadId) ?? ""
@@ -350,6 +357,7 @@ final class DeviceStateStore {
         selectedReasoningEffort: String,
         selectedApprovalPolicy: String,
         selectedSandbox: String,
+        languageCode: String,
         autoCompactEnabled: Bool,
         autoCompactTokenLimit: Int,
         threadId: String,
@@ -362,6 +370,7 @@ final class DeviceStateStore {
         state.selectedReasoningEffort = selectedReasoningEffort
         state.selectedApprovalPolicy = selectedApprovalPolicy
         state.selectedSandbox = selectedSandbox
+        state.languageCode = AppLanguage(rawValue: languageCode)?.rawValue ?? AppLanguage.fallback.rawValue
         state.autoCompactEnabled = autoCompactEnabled
         state.autoCompactTokenLimit = autoCompactTokenLimit
         state.threadId = threadId

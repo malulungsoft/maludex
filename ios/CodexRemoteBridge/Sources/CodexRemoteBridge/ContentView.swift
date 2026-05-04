@@ -159,8 +159,8 @@ struct ContentView: View {
                     ConnectionStatusPill(state: bridge.connectionState)
                 }
             }
-            .alert("maludex bridge", isPresented: errorBinding) {
-                Button("OK") {
+            .alert(bridge.copy.maludexBridgeTitle, isPresented: errorBinding) {
+                Button(bridge.copy.okButton) {
                     bridge.lastError = nil
                 }
             } message: {
@@ -225,6 +225,13 @@ private struct PairingScreen: View {
                 BrandLockup()
                     .padding(.top, 8)
 
+                Picker(bridge.copy.languageLabel, selection: $bridge.selectedLanguageCode) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(language.title).tag(language.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+
                 ConnectionPanel(state: bridge.connectionState)
 
                 if !bridge.savedBridges.isEmpty {
@@ -241,7 +248,7 @@ private struct PairingScreen: View {
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Label("Pairing payload", systemImage: "link.badge.plus")
+                    Label(bridge.copy.pairingPayloadTitle, systemImage: "link.badge.plus")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppPalette.ink)
 
@@ -260,14 +267,14 @@ private struct PairingScreen: View {
                         Button {
                             scannerPresented = true
                         } label: {
-                            Label("Scan", systemImage: "qrcode.viewfinder")
+                            Label(bridge.copy.scanButton, systemImage: "qrcode.viewfinder")
                         }
                         .buttonStyle(.bordered)
 
                         Button {
                             connect()
                         } label: {
-                            Label("Connect", systemImage: "bolt.horizontal")
+                            Label(bridge.copy.connectButton, systemImage: "bolt.horizontal")
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(pairingText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -608,13 +615,13 @@ private struct ProjectFloatingHeader: View {
                 Spacer(minLength: 4)
 
                 ProjectHeaderIconButton(
-                    title: "Chats",
+                    title: bridge.copy.chatsTitle,
                     systemImage: "bubble.left.and.text.bubble.right",
                     action: showChats
                 )
 
                 ProjectHeaderIconButton(
-                    title: isExpanded ? "Hide controls" : "Show controls",
+                    title: isExpanded ? bridge.copy.hideControlsTitle : bridge.copy.showControlsTitle,
                     systemImage: isExpanded ? "chevron.up" : "slider.horizontal.3"
                 ) {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -623,7 +630,7 @@ private struct ProjectFloatingHeader: View {
                 }
 
                 ProjectHeaderIconButton(
-                    title: "Session",
+                    title: bridge.copy.sessionTitle,
                     systemImage: "gearshape",
                     action: showSettings
                 )
@@ -717,12 +724,12 @@ private struct ProjectControlPanel: View {
         VStack(alignment: .leading, spacing: 14) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ProjectHeaderIconButton(title: "Diagnostics", systemImage: "stethoscope", action: showDiagnostics)
-                    ProjectHeaderIconButton(title: "Bridges", systemImage: "desktopcomputer", action: showBridges)
-                    ProjectHeaderIconButton(title: "Subagent", systemImage: "person.2.wave.2", action: showSubagent)
+                    ProjectHeaderIconButton(title: bridge.copy.diagnosticsTitle, systemImage: "stethoscope", action: showDiagnostics)
+                    ProjectHeaderIconButton(title: bridge.copy.bridgesTitle, systemImage: "desktopcomputer", action: showBridges)
+                    ProjectHeaderIconButton(title: bridge.copy.subagentTitle, systemImage: "person.2.wave.2", action: showSubagent)
                         .disabled(bridge.threadId.isEmpty)
-                    ProjectHeaderIconButton(title: "Settings", systemImage: "slider.horizontal.3", action: showSettings)
-                    ProjectHeaderIconButton(title: "Disconnect", systemImage: "power") {
+                    ProjectHeaderIconButton(title: bridge.copy.settingsTitle, systemImage: "slider.horizontal.3", action: showSettings)
+                    ProjectHeaderIconButton(title: bridge.copy.disconnectTitle, systemImage: "power") {
                         bridge.disconnect()
                     }
                 }
@@ -730,7 +737,7 @@ private struct ProjectControlPanel: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text("Active bridge")
+                Text(bridge.copy.activeBridgeTitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Text(bridge.activeBridgeLabel)
@@ -738,10 +745,10 @@ private struct ProjectControlPanel: View {
                     .foregroundStyle(AppPalette.ink)
                     .lineLimit(1)
 
-                Text("Active thread")
+                Text(bridge.copy.activeThreadTitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Text(bridge.activeThreadLabel)
+                Text(bridge.threadId.isEmpty ? bridge.copy.noActiveThread : bridge.threadId)
                     .font(.footnote.monospaced())
                     .foregroundStyle(AppPalette.ink)
                     .lineLimit(2)
@@ -750,9 +757,9 @@ private struct ProjectControlPanel: View {
 
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    Picker("Project", selection: $bridge.selectedProjectPath) {
+                    Picker(bridge.copy.projectTitle, selection: $bridge.selectedProjectPath) {
                         if bridge.projects.isEmpty {
-                            Text("No projects").tag("")
+                            Text(bridge.copy.noProjectsTitle).tag("")
                         }
                         ForEach(bridge.projects) { project in
                             Text(project.name).tag(project.path)
@@ -760,36 +767,36 @@ private struct ProjectControlPanel: View {
                     }
                     .pickerStyle(.menu)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .controlLabelStyle("Project", systemImage: "folder")
+                    .controlLabelStyle(bridge.copy.projectTitle, systemImage: "folder")
 
                     Button {
                         bridge.refreshProjects()
                     } label: {
-                        Label("Refresh projects", systemImage: "arrow.clockwise")
+                        Label(bridge.copy.refreshProjectsTitle, systemImage: "arrow.clockwise")
                             .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.bordered)
-                    .accessibilityLabel("Refresh projects")
+                    .accessibilityLabel(bridge.copy.refreshProjectsTitle)
 
                     Button {
                         showNewProject()
                     } label: {
-                        Label("New project", systemImage: "folder.badge.plus")
+                        Label(bridge.copy.newProjectTitle, systemImage: "folder.badge.plus")
                             .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.bordered)
-                    .accessibilityLabel("New project")
+                    .accessibilityLabel(bridge.copy.newProjectTitle)
                 }
 
-                Text(bridge.selectedProjectPath.isEmpty ? "Select a project" : bridge.selectedProjectPath)
+                Text(bridge.selectedProjectPath.isEmpty ? bridge.copy.selectProjectPrompt : bridge.selectedProjectPath)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
 
                 HStack(spacing: 10) {
-                    Picker("Model", selection: $bridge.selectedModel) {
+                    Picker(bridge.copy.modelTitle, selection: $bridge.selectedModel) {
                         if bridge.models.isEmpty {
-                            Text("Default").tag("")
+                            Text(bridge.copy.defaultModelTitle).tag("")
                         }
                         ForEach(bridge.models) { model in
                             Text(model.displayName).tag(model.model)
@@ -797,28 +804,28 @@ private struct ProjectControlPanel: View {
                     }
                     .pickerStyle(.menu)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .controlLabelStyle("Model", systemImage: "cpu")
+                    .controlLabelStyle(bridge.copy.modelTitle, systemImage: "cpu")
 
                     if bridge.selectedModelOption?.supportsImages == true {
                         Image(systemName: "photo")
                             .foregroundStyle(AppPalette.success)
-                            .accessibilityLabel("Supports images")
+                            .accessibilityLabel(bridge.copy.supportsImagesTitle)
                     }
 
                     Button {
                         bridge.refreshModels()
                     } label: {
-                        Label("Refresh models", systemImage: "arrow.clockwise")
+                        Label(bridge.copy.refreshModelsTitle, systemImage: "arrow.clockwise")
                             .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.bordered)
-                    .accessibilityLabel("Refresh models")
+                    .accessibilityLabel(bridge.copy.refreshModelsTitle)
                 }
 
                 HStack(spacing: 8) {
-                    Label(reasoningTitle(bridge.selectedReasoningEffort), systemImage: "dial.high")
+                    Label(bridge.copy.reasoningTitle(bridge.selectedReasoningEffort), systemImage: "dial.high")
                     Spacer()
-                    Text("\(SandboxOption(rawValue: bridge.selectedSandbox)?.title ?? "Read only") · \(ApprovalPolicyOption(rawValue: bridge.selectedApprovalPolicy)?.title ?? "On request")")
+                    Text("\(bridge.copy.sandboxTitle(bridge.selectedSandbox)) · \(bridge.copy.approvalPolicyTitle(bridge.selectedApprovalPolicy))")
                         .foregroundStyle(.secondary)
                 }
                 .font(.caption.weight(.semibold))
@@ -830,7 +837,7 @@ private struct ProjectControlPanel: View {
                 Button {
                     bridge.startThread(cwd: bridge.selectedProjectPath, model: bridge.selectedModel)
                 } label: {
-                    Label("Start thread", systemImage: "plus.circle.fill")
+                    Label(bridge.copy.startThreadTitle, systemImage: "plus.circle.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -886,10 +893,10 @@ private struct ChatListSheet: View {
                     }
                 }
             }
-            .navigationTitle("Chats")
+            .navigationTitle(bridge.copy.chatsTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") {
+                    Button(bridge.copy.closeButton) {
                         dismiss()
                     }
                 }
@@ -897,7 +904,7 @@ private struct ChatListSheet: View {
                     Button {
                         bridge.refreshChats()
                     } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
+                        Label(bridge.copy.refreshButton, systemImage: "arrow.clockwise")
                     }
                 }
             }
@@ -940,18 +947,18 @@ private struct BridgeSwitcherSheet: View {
                             Button(role: .destructive) {
                                 bridge.forgetSavedBridge(id: saved.id)
                             } label: {
-                                Label("Forget", systemImage: "trash")
+                                Label(bridge.copy.forgetTitle, systemImage: "trash")
                             }
                         }
                     }
                 } footer: {
-                    Text("Pair another PC by scanning that PC's maludex QR.")
+                    Text(bridge.copy.pairAnotherPCSubtitle)
                 }
             }
-            .navigationTitle("Bridges")
+            .navigationTitle(bridge.copy.bridgesTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") {
+                    Button(bridge.copy.closeButton) {
                         dismiss()
                     }
                 }
@@ -967,33 +974,33 @@ private struct DiagnosticsSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Connection") {
-                    DiagnosticRow(title: "App version", value: maludexClientVersion)
-                    DiagnosticRow(title: "State", value: bridge.connectionState.rawValue)
-                    DiagnosticRow(title: "Bridge", value: bridge.activeBridgeLabel)
-                    DiagnosticRow(title: "Active thread", value: bridge.activeThreadLabel)
+                Section(bridge.copy.diagnosticsConnectionTitle) {
+                    DiagnosticRow(title: bridge.copy.appVersionTitle, value: maludexClientVersion)
+                    DiagnosticRow(title: bridge.copy.stateTitle, value: bridge.copy.connectionState(bridge.connectionState.rawValue))
+                    DiagnosticRow(title: bridge.copy.bridgeTitle, value: bridge.activeBridgeLabel)
+                    DiagnosticRow(title: bridge.copy.activeThreadTitle, value: bridge.threadId.isEmpty ? bridge.copy.noActiveThread : bridge.threadId)
                 }
 
                 if let diagnostics = bridge.diagnostics {
-                    Section("Bridge") {
-                        DiagnosticRow(title: "Bridge version", value: diagnostics.bridgeVersion)
-                        DiagnosticRow(title: "Endpoint", value: diagnostics.endpoint)
-                        DiagnosticRow(title: "Protocol", value: "\(diagnostics.protocolVersion)")
-                        DiagnosticRow(title: "Token file", value: diagnostics.tokenFileValid ? "valid" : "check required")
-                        DiagnosticRow(title: "Codex", value: diagnostics.codexRunning ? "running" : "not running")
+                    Section(bridge.copy.bridgeTitle) {
+                        DiagnosticRow(title: bridge.copy.bridgeVersionTitle, value: diagnostics.bridgeVersion)
+                        DiagnosticRow(title: bridge.copy.endpointTitle, value: diagnostics.endpoint)
+                        DiagnosticRow(title: bridge.copy.protocolTitle, value: "\(diagnostics.protocolVersion)")
+                        DiagnosticRow(title: bridge.copy.tokenFileTitle, value: diagnostics.tokenFileValid ? "valid" : "check required")
+                        DiagnosticRow(title: bridge.copy.codexTitle, value: diagnostics.codexRunning ? "running" : "not running")
                     }
 
-                    Section("Runtime") {
-                        DiagnosticRow(title: "Connected client", value: diagnostics.connectedClient ? "yes" : "no")
-                        DiagnosticRow(title: "Active turns", value: "\(diagnostics.activeTurnCount)")
-                        DiagnosticRow(title: "Pending approvals", value: "\(diagnostics.pendingApprovalCount)")
-                        DiagnosticRow(title: "Event buffer", value: "\(diagnostics.eventBufferSize)/\(diagnostics.eventReplayLimit)")
-                        DiagnosticRow(title: "Project roots", value: "\(diagnostics.projectRootCount)")
-                        DiagnosticRow(title: "Uptime", value: durationText(diagnostics.uptimeSeconds))
+                    Section(bridge.copy.runtimeTitle) {
+                        DiagnosticRow(title: bridge.copy.connectedClientTitle, value: diagnostics.connectedClient ? "yes" : "no")
+                        DiagnosticRow(title: bridge.copy.activeTurnsTitle, value: "\(diagnostics.activeTurnCount)")
+                        DiagnosticRow(title: bridge.copy.pendingApprovalsTitle, value: "\(diagnostics.pendingApprovalCount)")
+                        DiagnosticRow(title: bridge.copy.eventBufferTitle, value: "\(diagnostics.eventBufferSize)/\(diagnostics.eventReplayLimit)")
+                        DiagnosticRow(title: bridge.copy.projectRootsTitle, value: "\(diagnostics.projectRootCount)")
+                        DiagnosticRow(title: bridge.copy.uptimeTitle, value: durationText(diagnostics.uptimeSeconds))
                     }
 
                     if !diagnostics.activeTurns.isEmpty {
-                        Section("Active Turns") {
+                        Section(bridge.copy.activeTurnsTitle) {
                             ForEach(diagnostics.activeTurns, id: \.turnId) { turn in
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(turn.turnId)
@@ -1008,7 +1015,7 @@ private struct DiagnosticsSheet: View {
                     }
 
                     if !diagnostics.pendingApprovals.isEmpty {
-                        Section("Pending Approvals") {
+                        Section(bridge.copy.pendingApprovalsTitle) {
                             ForEach(diagnostics.pendingApprovals, id: \.approvalId) { approval in
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(approval.method)
@@ -1022,42 +1029,42 @@ private struct DiagnosticsSheet: View {
                         }
                     }
 
-                    Section("Report") {
+                    Section(bridge.copy.reportTitle) {
                         Text(diagnostics.diagnosticReport)
                             .font(.caption.monospaced())
                             .textSelection(.enabled)
                         Button {
                             UIPasteboard.general.string = diagnostics.diagnosticReport
                         } label: {
-                            Label("Copy report", systemImage: "doc.on.doc")
+                            Label(bridge.copy.copyReportTitle, systemImage: "doc.on.doc")
                         }
                     }
                 } else {
                     Section {
-                        Text("No diagnostics loaded yet.")
+                        Text(bridge.copy.noDiagnosticsTitle)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                Section("Recovery") {
+                Section(bridge.copy.recoveryTitle) {
                     RecoveryHint(
-                        title: "Cannot connect",
-                        detail: "Check that the Mac bridge is running and the iPhone can reach the paired Tailscale or Nginx address."
+                        title: bridge.copy.cannotConnectTitle,
+                        detail: bridge.copy.cannotConnectDetail
                     )
                     RecoveryHint(
-                        title: "Authentication failed",
-                        detail: "The token may have rotated. Forget this bridge on iPhone and scan the new QR."
+                        title: bridge.copy.authFailedTitle,
+                        detail: bridge.copy.authFailedDetail
                     )
                     RecoveryHint(
-                        title: "Codex not running",
-                        detail: "Open the Mac and confirm Codex is installed and logged in."
+                        title: bridge.copy.codexNotRunningTitle,
+                        detail: bridge.copy.codexNotRunningDetail
                     )
                 }
             }
-            .navigationTitle("Diagnostics")
+            .navigationTitle(bridge.copy.diagnosticsTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") {
+                    Button(bridge.copy.closeButton) {
                         dismiss()
                     }
                 }
@@ -1065,7 +1072,7 @@ private struct DiagnosticsSheet: View {
                     Button {
                         bridge.refreshDiagnostics()
                     } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
+                        Label(bridge.copy.refreshButton, systemImage: "arrow.clockwise")
                     }
                     .disabled(!bridge.isConnected)
                 }
@@ -1118,24 +1125,24 @@ private struct NewProjectSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Picker("Location", selection: $root) {
+                Picker(bridge.copy.locationTitle, selection: $root) {
                     ForEach(bridge.projectRoots) { root in
                         Text(root.name).tag(root.path)
                     }
                 }
 
-                TextField("Project name", text: $name)
+                TextField(bridge.copy.projectNamePlaceholder, text: $name)
                     .textInputAutocapitalization(.words)
             }
-            .navigationTitle("New Project")
+            .navigationTitle(bridge.copy.newProjectTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(bridge.copy.cancelButton) {
                         dismiss()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
+                    Button(bridge.copy.createButton) {
                         bridge.createProject(root: root, name: name)
                         dismiss()
                     }
@@ -1158,27 +1165,36 @@ private struct SessionSettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Model") {
-                    Picker("Model", selection: $bridge.selectedModel) {
+                Section(bridge.copy.settingsTitle) {
+                    Picker(bridge.copy.languageLabel, selection: $bridge.selectedLanguageCode) {
+                        ForEach(AppLanguage.allCases) { language in
+                            Text(language.title).tag(language.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Section(bridge.copy.modelTitle) {
+                    Picker(bridge.copy.modelTitle, selection: $bridge.selectedModel) {
                         if bridge.models.isEmpty {
-                            Text("Default").tag("")
+                            Text(bridge.copy.defaultModelTitle).tag("")
                         }
                         ForEach(bridge.models) { model in
                             Text(model.displayName).tag(model.model)
                         }
                     }
 
-                    Picker("Intelligence", selection: $bridge.selectedReasoningEffort) {
+                    Picker(bridge.copy.intelligenceTitle, selection: $bridge.selectedReasoningEffort) {
                         ForEach(bridge.availableReasoningEfforts, id: \.self) { effort in
-                            Text(reasoningTitle(effort)).tag(effort)
+                            Text(bridge.copy.reasoningTitle(effort)).tag(effort)
                         }
                     }
 
-                    Toggle("Auto compact", isOn: $bridge.autoCompactEnabled)
+                    Toggle(bridge.copy.autoCompactTitle, isOn: $bridge.autoCompactEnabled)
 
                     if bridge.autoCompactEnabled {
                         Stepper(
-                            "Limit \(bridge.autoCompactTokenLimit / 1000)k",
+                            bridge.copy.limitTitle(thousands: bridge.autoCompactTokenLimit / 1000),
                             value: $bridge.autoCompactTokenLimit,
                             in: 20_000...200_000,
                             step: 10_000
@@ -1188,34 +1204,34 @@ private struct SessionSettingsSheet: View {
                     Button {
                         bridge.compactThread()
                     } label: {
-                        Label("Compact now", systemImage: "rectangle.compress.vertical")
+                        Label(bridge.copy.compactNowTitle, systemImage: "rectangle.compress.vertical")
                     }
                     .disabled(bridge.threadId.isEmpty)
                 }
 
-                Section("Permissions") {
-                    Picker("Files", selection: $bridge.selectedSandbox) {
+                Section(bridge.copy.permissionsTitle) {
+                    Picker(bridge.copy.filesTitle, selection: $bridge.selectedSandbox) {
                         ForEach(SandboxOption.allCases) { option in
-                            Text(option.title).tag(option.rawValue)
+                            Text(bridge.copy.sandboxTitle(option.rawValue)).tag(option.rawValue)
                         }
                     }
                     .pickerStyle(.segmented)
 
-                    Picker("Approvals", selection: $bridge.selectedApprovalPolicy) {
+                    Picker(bridge.copy.approvalsTitle, selection: $bridge.selectedApprovalPolicy) {
                         ForEach(ApprovalPolicyOption.allCases) { option in
-                            Text(option.title).tag(option.rawValue)
+                            Text(bridge.copy.approvalPolicyTitle(option.rawValue)).tag(option.rawValue)
                         }
                     }
 
-                    Text("Full access and never-approve are unavailable on mobile.")
+                    Text(bridge.copy.mobileSecurityNote)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("Session")
+            .navigationTitle(bridge.copy.sessionTitle)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
+                    Button(bridge.copy.doneButton) {
                         dismiss()
                     }
                 }
@@ -1236,7 +1252,7 @@ private struct SubagentSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Picker("Role", selection: $role) {
+                Picker(bridge.copy.roleTitle, selection: $role) {
                     ForEach(SubagentRoleOption.allCases) { option in
                         Text(option.title).tag(option.rawValue)
                     }
@@ -1247,15 +1263,15 @@ private struct SubagentSheet: View {
                     .textInputAutocapitalization(.sentences)
                     .textSelection(.enabled)
             }
-            .navigationTitle("Subagent")
+            .navigationTitle(bridge.copy.subagentTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(bridge.copy.cancelButton) {
                         dismiss()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Start") {
+                    Button(bridge.copy.startButton) {
                         bridge.startSubagent(role: role, task: task)
                         dismiss()
                     }
@@ -1267,6 +1283,7 @@ private struct SubagentSheet: View {
 }
 
 private struct TranscriptView: View {
+    @EnvironmentObject private var bridge: BridgeClient
     let entries: [TranscriptEntry]
     let hasOlder: Bool
     let isLoadingOlder: Bool
@@ -1275,7 +1292,7 @@ private struct TranscriptView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Conversation")
+                Text(bridge.copy.conversationTitle)
                     .font(.headline)
                 Spacer()
             }
@@ -1321,11 +1338,13 @@ private struct OlderTranscriptLoader: View {
 }
 
 private struct EmptyTranscriptView: View {
+    @EnvironmentObject private var bridge: BridgeClient
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("No transcript yet")
+            Text(bridge.copy.noTranscriptTitle)
                 .font(.subheadline.weight(.semibold))
-            Text("Ready for a new turn.")
+            Text(bridge.copy.noTranscriptSubtitle)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -1335,6 +1354,7 @@ private struct EmptyTranscriptView: View {
 }
 
 private struct TranscriptBubble: View {
+    @EnvironmentObject private var bridge: BridgeClient
     let entry: TranscriptEntry
     @State private var expanded = false
 
@@ -1362,7 +1382,7 @@ private struct TranscriptBubble: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 if entry.isStreaming {
-                    Text("Streaming")
+                    Text(bridge.copy.streamingTitle)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -1372,12 +1392,12 @@ private struct TranscriptBubble: View {
                     Button {
                         UIPasteboard.general.string = entry.text
                     } label: {
-                        Label("Copy", systemImage: "doc.on.doc")
+                        Label(bridge.copy.copyTitle, systemImage: "doc.on.doc")
                             .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel("Copy text")
+                    .accessibilityLabel(bridge.copy.copyTextTitle)
                 }
             }
 
@@ -1393,12 +1413,12 @@ private struct TranscriptBubble: View {
                     Button {
                         expanded.toggle()
                     } label: {
-                        Label(expanded ? "Collapse" : "Expand", systemImage: expanded ? "chevron.up" : "chevron.down")
+                        Label(expanded ? bridge.copy.collapseTitle : bridge.copy.expandTitle, systemImage: expanded ? "chevron.up" : "chevron.down")
                             .font(.caption.weight(.semibold))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(AppPalette.accent)
-                    .accessibilityLabel(expanded ? "Collapse message" : "Expand message")
+                    .accessibilityLabel(expanded ? bridge.copy.collapseMessageTitle : bridge.copy.expandMessageTitle)
                 }
             }
 
@@ -1423,11 +1443,11 @@ private struct TranscriptBubble: View {
     private var label: String {
         switch entry.role {
         case .user:
-            return "You"
+            return bridge.copy.youLabel
         case .assistant:
             return Brand.name
         case .system:
-            return "Thread"
+            return bridge.copy.threadLabel
         }
     }
 
@@ -1538,7 +1558,7 @@ private struct ApprovalCard: View {
                 Label(approval.title, systemImage: "hand.raised")
                     .font(.headline)
                 Spacer()
-                Text("Pending")
+                Text(bridge.copy.pendingTitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppPalette.warning)
             }
@@ -1559,7 +1579,7 @@ private struct ApprovalCard: View {
                 Button {
                     bridge.approve(approval)
                 } label: {
-                    Label("Approve", systemImage: "checkmark.circle")
+                    Label(bridge.copy.approveTitle, systemImage: "checkmark.circle")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -1567,7 +1587,7 @@ private struct ApprovalCard: View {
                 Button(role: .destructive) {
                     bridge.deny(approval)
                 } label: {
-                    Label("Deny", systemImage: "xmark.circle")
+                    Label(bridge.copy.denyTitle, systemImage: "xmark.circle")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -1579,6 +1599,7 @@ private struct ApprovalCard: View {
 }
 
 private struct PromptQueuePanel: View {
+    @EnvironmentObject private var bridge: BridgeClient
     let items: [PromptQueueItem]
     let moveUp: (PromptQueueItem) -> Void
     let moveDown: (PromptQueueItem) -> Void
@@ -1587,7 +1608,7 @@ private struct PromptQueuePanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("Queue", systemImage: "text.line.first.and.arrowtriangle.forward")
+                Label(bridge.copy.queueTitle, systemImage: "text.line.first.and.arrowtriangle.forward")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(AppPalette.ink)
                 Spacer()
@@ -1607,7 +1628,7 @@ private struct PromptQueuePanel: View {
                                 .background(AppPalette.accent.opacity(0.12), in: Circle())
 
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.promptPreview.isEmpty ? "Queued prompt" : item.promptPreview)
+                                Text(item.promptPreview.isEmpty ? bridge.copy.queuedPromptTitle : item.promptPreview)
                                     .font(.caption)
                                     .lineLimit(1)
                                 Text(queueDetail(item))
@@ -1620,31 +1641,31 @@ private struct PromptQueuePanel: View {
                             Button {
                                 moveUp(item)
                             } label: {
-                                Label("Move up", systemImage: "chevron.up")
+                                Label(bridge.copy.moveQueuedPromptUpTitle, systemImage: "chevron.up")
                                     .labelStyle(.iconOnly)
                             }
                             .buttonStyle(.plain)
                             .disabled(index == 0)
-                            .accessibilityLabel("Move queued prompt up")
+                            .accessibilityLabel(bridge.copy.moveQueuedPromptUpTitle)
 
                             Button {
                                 moveDown(item)
                             } label: {
-                                Label("Move down", systemImage: "chevron.down")
+                                Label(bridge.copy.moveQueuedPromptDownTitle, systemImage: "chevron.down")
                                     .labelStyle(.iconOnly)
                             }
                             .buttonStyle(.plain)
                             .disabled(index == items.count - 1)
-                            .accessibilityLabel("Move queued prompt down")
+                            .accessibilityLabel(bridge.copy.moveQueuedPromptDownTitle)
 
                             Button {
                                 cancel(item)
                             } label: {
-                                Label("Cancel queued prompt", systemImage: "xmark")
+                                Label(bridge.copy.cancelQueuedPromptTitle, systemImage: "xmark")
                                     .labelStyle(.iconOnly)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Cancel queued prompt")
+                            .accessibilityLabel(bridge.copy.cancelQueuedPromptTitle)
                         }
                         .padding(8)
                         .background(AppPalette.input, in: RoundedRectangle(cornerRadius: 8))
@@ -1660,7 +1681,7 @@ private struct PromptQueuePanel: View {
     private func queueDetail(_ item: PromptQueueItem) -> String {
         let bytes = ByteCountFormatter.string(fromByteCount: Int64(item.promptBytes), countStyle: .file)
         if item.attachmentCount > 0 {
-            return "\(bytes) · \(item.attachmentCount) attachments"
+            return "\(bytes) · \(item.attachmentCount) \(bridge.copy.attachmentsTitle)"
         }
         return bytes
     }
@@ -1682,7 +1703,7 @@ private struct PromptComposer: View {
         VStack(spacing: 8) {
             ZStack(alignment: .topLeading) {
                 if prompt.isEmpty {
-                    Text("Ask \(Brand.name)...")
+                    Text(bridge.copy.askPlaceholder(brand: Brand.name))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 12)
@@ -1711,14 +1732,14 @@ private struct PromptComposer: View {
                     ComposerIconLabel(systemImage: "stop.circle")
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Stop")
+                .accessibilityLabel(bridge.copy.stopTitle)
                 .disabled(!bridge.canSendPrompt)
 
                 PhotosPicker(selection: $photoItems, maxSelectionCount: 5, matching: .images) {
                     ComposerIconLabel(systemImage: "photo.on.rectangle")
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Photo")
+                .accessibilityLabel(bridge.copy.photoTitle)
                 .disabled(attachments.count >= 5)
 
                 Button {
@@ -1727,7 +1748,7 @@ private struct PromptComposer: View {
                     ComposerIconLabel(systemImage: "paperclip")
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("File")
+                .accessibilityLabel(bridge.copy.fileTitle)
                 .disabled(attachments.count >= 5)
 
                 Button {
@@ -1740,7 +1761,7 @@ private struct PromptComposer: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(voiceState.isListening ? "Stop voice input" : "Voice input")
+                .accessibilityLabel(voiceState.isListening ? bridge.copy.stopVoiceInputTitle : bridge.copy.voiceInputTitle)
 
                 Spacer(minLength: 0)
 
@@ -1751,7 +1772,7 @@ private struct PromptComposer: View {
                     ComposerIconLabel(systemImage: "arrowshape.turn.up.right", width: 48)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Steer active turn")
+                .accessibilityLabel(bridge.copy.steerActiveTurnTitle)
                 .disabled(!bridge.canSteerPrompt || (prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty))
 
                 Button {
@@ -1761,7 +1782,7 @@ private struct PromptComposer: View {
                     ComposerIconLabel(systemImage: "paperplane.fill", width: 52, isPrimary: true)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Send")
+                .accessibilityLabel(bridge.copy.sendTitle)
                 .disabled(!bridge.canSendPrompt || (prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty))
             }
 
@@ -1802,6 +1823,7 @@ private struct ComposerIconLabel: View {
 }
 
 private struct AttachmentStrip: View {
+    @EnvironmentObject private var bridge: BridgeClient
     @Binding var attachments: [MobileAttachment]
 
     var body: some View {
@@ -1821,7 +1843,7 @@ private struct AttachmentStrip: View {
                                 Image(systemName: "xmark.circle.fill")
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Remove attachment")
+                            .accessibilityLabel(bridge.copy.removeAttachmentTitle)
                         }
                         .font(.caption)
                         .padding(.horizontal, 10)
@@ -1839,6 +1861,7 @@ private struct AttachmentStrip: View {
 }
 
 private struct ConnectionPanel: View {
+    @EnvironmentObject private var bridge: BridgeClient
     let state: ConnectionState
 
     var body: some View {
@@ -1852,10 +1875,10 @@ private struct ConnectionPanel: View {
                     .foregroundStyle(color)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text("maludex bridge")
+                Text(bridge.copy.maludexBridgeTitle)
                     .font(.headline)
                     .foregroundStyle(AppPalette.ink)
-                Text(state.rawValue)
+                Text(bridge.copy.connectionState(state.rawValue))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -1892,6 +1915,7 @@ private struct ConnectionPanel: View {
 }
 
 private struct ConnectionStatusPill: View {
+    @EnvironmentObject private var bridge: BridgeClient
     let state: ConnectionState
 
     var body: some View {
@@ -1899,7 +1923,7 @@ private struct ConnectionStatusPill: View {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
-            Text(state.rawValue)
+            Text(bridge.copy.connectionState(state.rawValue))
                 .font(.caption.weight(.semibold))
         }
         .padding(.horizontal, 10)
@@ -1966,6 +1990,7 @@ private struct BrandMark: View {
 }
 
 private struct SavedBridgeList: View {
+    @EnvironmentObject private var bridgeClient: BridgeClient
     let bridges: [SavedBridge]
     let activeBridgeId: String
     let connect: (String) -> Void
@@ -1978,10 +2003,10 @@ private struct SavedBridgeList: View {
                 Image(systemName: "key.horizontal.fill")
                     .foregroundStyle(AppPalette.accent)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Saved bridges")
+                    Text(bridgeClient.copy.savedBridgesTitle)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppPalette.ink)
-                    Text("Switch between paired local PCs.")
+                    Text(bridgeClient.copy.savedBridgesSubtitle)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -2002,7 +2027,7 @@ private struct SavedBridgeList: View {
             Button(role: .destructive) {
                 forgetAll()
             } label: {
-                Label("Forget all", systemImage: "trash")
+                Label(bridgeClient.copy.forgetAllTitle, systemImage: "trash")
             }
             .buttonStyle(.bordered)
         }
@@ -2011,6 +2036,7 @@ private struct SavedBridgeList: View {
 }
 
 private struct SavedBridgeRow: View {
+    @EnvironmentObject private var bridgeClient: BridgeClient
     let bridge: SavedBridge
     let isActive: Bool
     let connect: () -> Void
@@ -2039,20 +2065,20 @@ private struct SavedBridgeRow: View {
                 Button {
                     connect()
                 } label: {
-                    Label("Connect", systemImage: "bolt.fill")
+                    Label(bridgeClient.copy.connectButton, systemImage: "bolt.fill")
                         .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.bordered)
-                .accessibilityLabel("Connect \(bridge.label)")
+                .accessibilityLabel("\(bridgeClient.copy.connectButton) \(bridge.label)")
 
                 Button(role: .destructive) {
                     forget()
                 } label: {
-                    Label("Forget", systemImage: "trash")
+                    Label(bridgeClient.copy.forgetTitle, systemImage: "trash")
                         .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.bordered)
-                .accessibilityLabel("Forget \(bridge.label)")
+                .accessibilityLabel("\(bridgeClient.copy.forgetTitle) \(bridge.label)")
             }
         }
         .padding(10)

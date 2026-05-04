@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.5 - 2026-05-05
+
+- Add English/Korean language switching to the iPhone app, with English as the default.
+- Persist the selected iPhone app language in device state so app relaunches do not reset it.
+- Add English/Korean language switching to the macOS Control Center and preserve it with AppStorage.
+
 ## 0.6.4 - 2026-05-05
 
 - Keep Codex approval requests pending when the iPhone is temporarily disconnected instead of immediately declining them.

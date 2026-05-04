@@ -12,6 +12,11 @@ struct ClientModelsTests {
         require(project?.id == "/Users/example/App", "project id should be the path")
         require(project?.name == "App", "project name should decode")
         require(project?.source == "recent", "project source should decode")
+        require(AppLanguage.fallback == .english, "app language should default to English")
+        require(AppLanguage(rawValue: "ko")?.title == "한국어", "Korean language option should be available")
+        require(AppCopy(language: .english).settingsTitle == "Settings", "English UI copy should be available")
+        require(AppCopy(language: .korean).settingsTitle == "설정", "Korean UI copy should be available")
+        require(AppCopy(languageCode: "bad").settingsTitle == "Settings", "invalid language code should fall back to English")
 
         let queueItem = PromptQueueItem(json: [
             "id": .string("queue-1"),
@@ -250,6 +255,7 @@ struct ClientModelsTests {
             selectedReasoningEffort: "high",
             selectedApprovalPolicy: "on-failure",
             selectedSandbox: "workspace-write",
+            languageCode: AppLanguage.korean.rawValue,
             autoCompactEnabled: false,
             autoCompactTokenLimit: 90000,
             threadId: "thread-1",
@@ -282,6 +288,7 @@ struct ClientModelsTests {
         require(restoredSnapshot?.selectedReasoningEffort == "high", "selected intelligence should restore")
         require(restoredSnapshot?.selectedApprovalPolicy == "on-failure", "selected approval policy should restore")
         require(restoredSnapshot?.selectedSandbox == "workspace-write", "selected sandbox should restore")
+        require(restoredSnapshot?.languageCode == AppLanguage.korean.rawValue, "selected language should restore")
         require(restoredSnapshot?.autoCompactEnabled == false, "auto compact toggle should restore")
         require(restoredSnapshot?.autoCompactTokenLimit == 90000, "auto compact token limit should restore")
         require(restoredSnapshot?.threadId == "thread-1", "thread id should restore")
@@ -300,6 +307,7 @@ struct ClientModelsTests {
             selectedReasoningEffort: "medium",
             selectedApprovalPolicy: "on-request",
             selectedSandbox: "read-only",
+            languageCode: AppLanguage.english.rawValue,
             autoCompactEnabled: true,
             autoCompactTokenLimit: 120000,
             threadId: "thread-desk",
@@ -337,6 +345,7 @@ struct ClientModelsTests {
             selectedReasoningEffort: "high",
             selectedApprovalPolicy: "on-failure",
             selectedSandbox: "workspace-write",
+            languageCode: AppLanguage.korean.rawValue,
             autoCompactEnabled: false,
             autoCompactTokenLimit: 90000,
             threadId: "thread-stale",

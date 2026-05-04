@@ -247,6 +247,210 @@ enum SubagentRoleOption: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppLanguage: String, CaseIterable, Identifiable, Codable {
+    case english = "en"
+    case korean = "ko"
+
+    static let fallback = AppLanguage.english
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .english:
+            return "English"
+        case .korean:
+            return "한국어"
+        }
+    }
+}
+
+struct AppCopy: Equatable {
+    let language: AppLanguage
+
+    init(language: AppLanguage) {
+        self.language = language
+    }
+
+    init(languageCode: String) {
+        self.language = AppLanguage(rawValue: languageCode) ?? .fallback
+    }
+
+    var okButton: String { text("OK", "확인") }
+    var closeButton: String { text("Close", "닫기") }
+    var cancelButton: String { text("Cancel", "취소") }
+    var doneButton: String { text("Done", "완료") }
+    var startButton: String { text("Start", "시작") }
+    var createButton: String { text("Create", "생성") }
+    var refreshButton: String { text("Refresh", "새로고침") }
+    var connectButton: String { text("Connect", "연결") }
+    var scanButton: String { text("Scan", "스캔") }
+    var settingsTitle: String { text("Settings", "설정") }
+    var sessionTitle: String { text("Session", "세션") }
+    var languageLabel: String { text("Language", "언어") }
+    var showControlsTitle: String { text("Show controls", "컨트롤 보기") }
+    var hideControlsTitle: String { text("Hide controls", "컨트롤 숨기기") }
+    var pairingPayloadTitle: String { text("Pairing payload", "페어링 코드") }
+    var maludexBridgeTitle: String { text("maludex bridge", "maludex 브릿지") }
+    var chatsTitle: String { text("Chats", "채팅") }
+    var bridgesTitle: String { text("Bridges", "브릿지") }
+    var diagnosticsTitle: String { text("Diagnostics", "진단") }
+    var subagentTitle: String { text("Subagent", "서브에이전트") }
+    var roleTitle: String { text("Role", "역할") }
+    var disconnectTitle: String { text("Disconnect", "연결 끊기") }
+    var activeBridgeTitle: String { text("Active bridge", "활성 브릿지") }
+    var activeThreadTitle: String { text("Active thread", "활성 스레드") }
+    var noActiveThread: String { text("No active thread", "활성 스레드 없음") }
+    var noBridge: String { text("No bridge", "브릿지 없음") }
+    var projectTitle: String { text("Project", "프로젝트") }
+    var noProjectsTitle: String { text("No projects", "프로젝트 없음") }
+    var refreshProjectsTitle: String { text("Refresh projects", "프로젝트 새로고침") }
+    var newProjectTitle: String { text("New project", "새 프로젝트") }
+    var projectNamePlaceholder: String { text("Project name", "프로젝트 이름") }
+    var locationTitle: String { text("Location", "위치") }
+    var selectProjectPrompt: String { text("Select a project", "프로젝트를 선택하세요") }
+    var modelTitle: String { text("Model", "모델") }
+    var defaultModelTitle: String { text("Default", "기본값") }
+    var refreshModelsTitle: String { text("Refresh models", "모델 새로고침") }
+    var supportsImagesTitle: String { text("Supports images", "이미지 지원") }
+    var startThreadTitle: String { text("Start thread", "스레드 시작") }
+    var intelligenceTitle: String { text("Intelligence", "인텔리전스") }
+    var autoCompactTitle: String { text("Auto compact", "자동 컨텍스트 압축") }
+    var compactNowTitle: String { text("Compact now", "지금 압축") }
+    var permissionsTitle: String { text("Permissions", "권한") }
+    var filesTitle: String { text("Files", "파일") }
+    var approvalsTitle: String { text("Approvals", "승인") }
+    var mobileSecurityNote: String { text("Full access and never-approve are unavailable on mobile.", "모바일에서는 전체 접근과 무승인 모드를 사용할 수 없습니다.") }
+    var conversationTitle: String { text("Conversation", "대화") }
+    var noTranscriptTitle: String { text("No transcript yet", "아직 대화가 없습니다") }
+    var noTranscriptSubtitle: String { text("Ready for a new turn.", "새 작업을 시작할 준비가 됐습니다.") }
+    var streamingTitle: String { text("Streaming", "응답 중") }
+    var copyTitle: String { text("Copy", "복사") }
+    var copyTextTitle: String { text("Copy text", "텍스트 복사") }
+    var collapseTitle: String { text("Collapse", "접기") }
+    var expandTitle: String { text("Expand", "펼치기") }
+    var collapseMessageTitle: String { text("Collapse message", "메시지 접기") }
+    var expandMessageTitle: String { text("Expand message", "메시지 펼치기") }
+    var youLabel: String { text("You", "나") }
+    var threadLabel: String { text("Thread", "스레드") }
+    var pendingTitle: String { text("Pending", "대기 중") }
+    var approveTitle: String { text("Approve", "승인") }
+    var denyTitle: String { text("Deny", "거부") }
+    var queueTitle: String { text("Queue", "대기열") }
+    var queuedPromptTitle: String { text("Queued prompt", "대기 중인 프롬프트") }
+    var moveQueuedPromptUpTitle: String { text("Move queued prompt up", "프롬프트 순서 올리기") }
+    var moveQueuedPromptDownTitle: String { text("Move queued prompt down", "프롬프트 순서 내리기") }
+    var cancelQueuedPromptTitle: String { text("Cancel queued prompt", "대기 프롬프트 취소") }
+    var attachmentsTitle: String { text("attachments", "첨부") }
+    var stopTitle: String { text("Stop", "중지") }
+    var photoTitle: String { text("Photo", "사진") }
+    var fileTitle: String { text("File", "파일") }
+    var voiceInputTitle: String { text("Voice input", "음성 입력") }
+    var stopVoiceInputTitle: String { text("Stop voice input", "음성 입력 중지") }
+    var steerActiveTurnTitle: String { text("Steer active turn", "현재 작업에 추가 지시") }
+    var sendTitle: String { text("Send", "보내기") }
+    var removeAttachmentTitle: String { text("Remove attachment", "첨부 제거") }
+    var savedBridgesTitle: String { text("Saved bridges", "저장된 브릿지") }
+    var savedBridgesSubtitle: String { text("Switch between paired local PCs.", "페어링된 로컬 PC들을 전환합니다.") }
+    var forgetTitle: String { text("Forget", "삭제") }
+    var forgetAllTitle: String { text("Forget all", "모두 삭제") }
+    var pairAnotherPCSubtitle: String { text("Pair another PC by scanning that PC's maludex QR.", "다른 PC의 maludex QR을 스캔해서 추가로 페어링하세요.") }
+    var diagnosticsConnectionTitle: String { text("Connection", "연결") }
+    var appVersionTitle: String { text("App version", "앱 버전") }
+    var stateTitle: String { text("State", "상태") }
+    var bridgeTitle: String { text("Bridge", "브릿지") }
+    var bridgeVersionTitle: String { text("Bridge version", "브릿지 버전") }
+    var endpointTitle: String { text("Endpoint", "엔드포인트") }
+    var protocolTitle: String { text("Protocol", "프로토콜") }
+    var tokenFileTitle: String { text("Token file", "토큰 파일") }
+    var codexTitle: String { text("Codex", "Codex") }
+    var runtimeTitle: String { text("Runtime", "런타임") }
+    var connectedClientTitle: String { text("Connected client", "연결된 클라이언트") }
+    var activeTurnsTitle: String { text("Active turns", "진행 중 작업") }
+    var pendingApprovalsTitle: String { text("Pending approvals", "대기 중 승인") }
+    var eventBufferTitle: String { text("Event buffer", "이벤트 버퍼") }
+    var projectRootsTitle: String { text("Project roots", "프로젝트 루트") }
+    var uptimeTitle: String { text("Uptime", "가동 시간") }
+    var reportTitle: String { text("Report", "리포트") }
+    var copyReportTitle: String { text("Copy report", "리포트 복사") }
+    var noDiagnosticsTitle: String { text("No diagnostics loaded yet.", "아직 진단 정보를 불러오지 않았습니다.") }
+    var recoveryTitle: String { text("Recovery", "복구") }
+    var cannotConnectTitle: String { text("Cannot connect", "연결할 수 없음") }
+    var cannotConnectDetail: String { text("Check that the Mac bridge is running and the iPhone can reach the paired Tailscale or Nginx address.", "Mac 브릿지가 실행 중이고 iPhone에서 페어링된 Tailscale 또는 Nginx 주소에 접근 가능한지 확인하세요.") }
+    var authFailedTitle: String { text("Authentication failed", "인증 실패") }
+    var authFailedDetail: String { text("The token may have rotated. Forget this bridge on iPhone and scan the new QR.", "토큰이 변경됐을 수 있습니다. iPhone에서 이 브릿지를 삭제한 뒤 새 QR을 스캔하세요.") }
+    var codexNotRunningTitle: String { text("Codex not running", "Codex가 실행 중이 아님") }
+    var codexNotRunningDetail: String { text("Open the Mac and confirm Codex is installed and logged in.", "Mac에서 Codex가 설치되어 있고 로그인되어 있는지 확인하세요.") }
+
+    func askPlaceholder(brand: String) -> String {
+        text("Ask \(brand)...", "\(brand)에게 요청하기...")
+    }
+
+    func limitTitle(thousands: Int) -> String {
+        text("Limit \(thousands)k", "제한 \(thousands)k")
+    }
+
+    func connectionState(_ value: String) -> String {
+        switch value {
+        case "Offline":
+            return text("Offline", "오프라인")
+        case "Connecting":
+            return text("Connecting", "연결 중")
+        case "Connected":
+            return text("Connected", "연결됨")
+        case "Connection issue":
+            return text("Connection issue", "연결 문제")
+        default:
+            return value
+        }
+    }
+
+    func reasoningTitle(_ value: String) -> String {
+        switch value {
+        case "minimal":
+            return text("Minimal", "최소")
+        case "low":
+            return text("Low", "낮음")
+        case "medium":
+            return text("Medium", "중간")
+        case "high":
+            return text("High", "높음")
+        case "xhigh":
+            return text("X High", "매우 높음")
+        default:
+            return value
+        }
+    }
+
+    func sandboxTitle(_ value: String) -> String {
+        switch value {
+        case SandboxOption.readOnly.rawValue:
+            return text("Read only", "읽기 전용")
+        case SandboxOption.workspaceWrite.rawValue:
+            return text("Workspace write", "워크스페이스 쓰기")
+        default:
+            return value
+        }
+    }
+
+    func approvalPolicyTitle(_ value: String) -> String {
+        switch value {
+        case ApprovalPolicyOption.onRequest.rawValue:
+            return text("On request", "요청 시 승인")
+        case ApprovalPolicyOption.onFailure.rawValue:
+            return text("On failure", "실패 시 승인")
+        case ApprovalPolicyOption.untrusted.rawValue:
+            return text("Untrusted", "신뢰 낮음")
+        default:
+            return value
+        }
+    }
+
+    private func text(_ english: String, _ korean: String) -> String {
+        language == .korean ? korean : english
+    }
+}
+
 func preferredSpeechLocaleIdentifier(
     preferredLanguages: [String] = Locale.preferredLanguages,
     availableLocaleIdentifiers: Set<String>
@@ -285,7 +489,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.6.4"
+let maludexClientVersion = "0.6.5"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)

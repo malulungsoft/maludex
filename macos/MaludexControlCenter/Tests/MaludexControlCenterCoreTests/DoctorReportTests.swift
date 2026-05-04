@@ -2,6 +2,14 @@ import XCTest
 @testable import MaludexControlCenterCore
 
 final class DoctorReportTests: XCTestCase {
+    func testControlCenterCopyDefaultsToEnglishAndSupportsKorean() {
+        XCTAssertEqual(ControlCenterLanguage.fallback, .english)
+        XCTAssertEqual(ControlCenterCopy(language: .english).bridgeActionsTitle, "Bridge Actions")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).bridgeActionsTitle, "브릿지 작업")
+        XCTAssertEqual(ControlCenterCopy(languageCode: "unknown").refreshButton, "Refresh")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).statusLabel(.healthy), "정상")
+    }
+
     func testDecodesHealthyDoctorReport() throws {
         let json = """
         {

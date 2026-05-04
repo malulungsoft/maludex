@@ -89,6 +89,9 @@ final class BridgeClient: ObservableObject {
     @Published var selectedSandbox = SandboxOption.readOnly.rawValue {
         didSet { persistSnapshot() }
     }
+    @Published var selectedLanguageCode = AppLanguage.fallback.rawValue {
+        didSet { persistSnapshot() }
+    }
     @Published var autoCompactEnabled = true {
         didSet { persistSnapshot() }
     }
@@ -114,6 +117,14 @@ final class BridgeClient: ObservableObject {
 
     var canSteerPrompt: Bool {
         canSendPrompt && activeTurnId != nil
+    }
+
+    var selectedLanguage: AppLanguage {
+        AppLanguage(rawValue: selectedLanguageCode) ?? .fallback
+    }
+
+    var copy: AppCopy {
+        AppCopy(language: selectedLanguage)
     }
 
     var activeThreadLabel: String {
@@ -244,6 +255,7 @@ final class BridgeClient: ObservableObject {
     }
 
     func forgetSavedDeviceState() {
+        let preservedLanguageCode = selectedLanguageCode
         disconnect()
         do {
             try stateStore.clear()
@@ -258,6 +270,7 @@ final class BridgeClient: ObservableObject {
         selectedReasoningEffort = ReasoningEffortOption.fallback
         selectedApprovalPolicy = ApprovalPolicyOption.onRequest.rawValue
         selectedSandbox = SandboxOption.readOnly.rawValue
+        selectedLanguageCode = preservedLanguageCode.isEmpty ? AppLanguage.fallback.rawValue : preservedLanguageCode
         autoCompactEnabled = true
         autoCompactTokenLimit = 120000
         threadId = ""
@@ -276,6 +289,7 @@ final class BridgeClient: ObservableObject {
         hasSavedPairing = false
         savedPairingLabel = nil
         suppressPersistence = false
+        persistSnapshot()
         refreshSavedPairingState()
     }
 
@@ -1183,6 +1197,7 @@ final class BridgeClient: ObservableObject {
         selectedReasoningEffort = snapshot.selectedReasoningEffort
         selectedApprovalPolicy = snapshot.selectedApprovalPolicy
         selectedSandbox = snapshot.selectedSandbox
+        selectedLanguageCode = AppLanguage(rawValue: snapshot.languageCode)?.rawValue ?? AppLanguage.fallback.rawValue
         autoCompactEnabled = snapshot.autoCompactEnabled
         autoCompactTokenLimit = snapshot.autoCompactTokenLimit
         threadId = snapshot.threadId
@@ -1216,6 +1231,7 @@ final class BridgeClient: ObservableObject {
             selectedReasoningEffort: selectedReasoningEffort,
             selectedApprovalPolicy: selectedApprovalPolicy,
             selectedSandbox: selectedSandbox,
+            languageCode: selectedLanguageCode,
             autoCompactEnabled: autoCompactEnabled,
             autoCompactTokenLimit: autoCompactTokenLimit,
             threadId: threadId,
