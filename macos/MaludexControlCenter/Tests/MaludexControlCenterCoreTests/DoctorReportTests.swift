@@ -141,6 +141,30 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertEqual(resolved.argumentsPrefix, [])
     }
 
+    func testToolResolverFindsVoltaNodeBeforeShellFallback() {
+        let resolved = ToolExecutableResolver.resolve(
+            command: "node",
+            environment: ["HOME": "/Users/example", "PATH": "/usr/bin:/bin"],
+            fileExists: { $0 == "/Users/example/.volta/bin/node" || $0 == "/bin/zsh" }
+        )
+
+        XCTAssertEqual(resolved.executable, "/Users/example/.volta/bin/node")
+        XCTAssertEqual(resolved.argumentsPrefix, [])
+    }
+
+    func testToolResolverUsesManagedShellFallbackForNvmWhenDirectNodeIsUnavailable() {
+        let resolved = ToolExecutableResolver.resolve(
+            command: "node",
+            environment: ["HOME": "/Users/example", "PATH": "/usr/bin:/bin"],
+            fileExists: { $0 == "/bin/zsh" }
+        )
+
+        XCTAssertEqual(resolved.executable, "/bin/zsh")
+        XCTAssertEqual(Array(resolved.argumentsPrefix.prefix(2)), ["-lc", ToolExecutableResolver.managedShellBootstrap])
+        XCTAssertEqual(Array(resolved.argumentsPrefix.suffix(2)), ["maludex-tool", "node"])
+        XCTAssertTrue(ToolExecutableResolver.managedShellBootstrap.contains(".nvm/nvm.sh"))
+    }
+
     func testToolResolverFallsBackToEnvWhenNoKnownPathExists() {
         let resolved = ToolExecutableResolver.resolve(
             command: "node",

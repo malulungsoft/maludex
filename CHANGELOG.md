@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.7 - 2026-05-05
+
+- Improve macOS Control Center tool resolution for Node managers such as Volta, asdf, mise, and nvm when launched outside Terminal.
+- Add a managed shell fallback that can bootstrap nvm/asdf/mise before running `node` or `npm`.
+- Document Control Center Node path recovery through automatic discovery and `MALUDEX_NODE_PATH` / `MALUDEX_NPM_PATH` overrides.
+
 ## 0.6.6 - 2026-05-05
 
 - Add a Mobile Handoff panel to the macOS Control Center so recent iPhone-authored prompts can be reviewed without terminal commands.

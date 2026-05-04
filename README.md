@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.6.6`
+Current version: `v0.6.7`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 
@@ -127,6 +127,13 @@ open macos/MaludexControlCenter/Package.swift
 Run the `MaludexControlCenter` scheme. The app reads the redacted doctor JSON from the local repo and can refresh bridge status, repair a stale LaunchAgent path, restart/start/stop the bridge, rotate the pairing token, and display a new pairing QR.
 
 The app never displays the raw bearer token. Pairing QR images are still secrets because they encode the token.
+
+When launched from Finder or Xcode, macOS apps do not inherit the same shell
+`PATH` as Terminal. The Control Center looks for `node` and `npm` in Homebrew,
+Volta, asdf, mise, nvm, and common local-bin paths, then falls back to a small
+managed shell bootstrap for nvm/asdf/mise. If your setup is unusual, set
+`MALUDEX_NODE_PATH` and `MALUDEX_NPM_PATH` to absolute executable paths before
+launching the app.
 
 ## Optional Nginx Remote Access
 

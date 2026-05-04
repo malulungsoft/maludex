@@ -137,6 +137,10 @@ struct ToolExecutable: Equatable {
 }
 
 enum ToolExecutableResolver {
+    static let managedShellBootstrap = """
+    if [ -s "$HOME/.nvm/nvm.sh" ]; then . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1; command -v nvm >/dev/null 2>&1 && nvm use --silent default >/dev/null 2>&1 || true; fi; if [ -s "$HOME/.asdf/asdf.sh" ]; then . "$HOME/.asdf/asdf.sh" >/dev/null 2>&1; fi; if [ -s "$HOME/.local/share/mise/mise.sh" ]; then . "$HOME/.local/share/mise/mise.sh" >/dev/null 2>&1; fi; exec "$@"
+    """
+
     static func resolve(
         command: String,
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -154,8 +158,18 @@ enum ToolExecutableResolver {
             }
         }
 
-        for candidate in defaultCandidatePaths(for: command) where fileExists(candidate) {
+        for candidate in defaultCandidatePaths(
+            for: command,
+            homeDirectory: environment["HOME"] ?? NSHomeDirectory()
+        ) where fileExists(candidate) {
             return ToolExecutable(executable: candidate, argumentsPrefix: [])
+        }
+
+        if fileExists("/bin/zsh") {
+            return ToolExecutable(
+                executable: "/bin/zsh",
+                argumentsPrefix: ["-lc", managedShellBootstrap, "maludex-tool", command]
+            )
         }
 
         return ToolExecutable(executable: "/usr/bin/env", argumentsPrefix: [command])
@@ -168,14 +182,29 @@ enum ToolExecutableResolver {
             .filter { !$0.isEmpty } ?? []
     }
 
-    private static func defaultCandidatePaths(for command: String) -> [String] {
-        [
+    private static func defaultCandidatePaths(for command: String, homeDirectory: String?) -> [String] {
+        var candidates: [String] = [
             "/opt/homebrew/bin/\(command)",
-            "/usr/local/bin/\(command)",
+            "/usr/local/bin/\(command)"
+        ]
+
+        if let homeDirectory, !homeDirectory.isEmpty {
+            candidates.append(contentsOf: [
+                "\(homeDirectory)/.volta/bin/\(command)",
+                "\(homeDirectory)/.asdf/shims/\(command)",
+                "\(homeDirectory)/.local/share/mise/shims/\(command)",
+                "\(homeDirectory)/.nvm/current/bin/\(command)",
+                "\(homeDirectory)/.local/bin/\(command)"
+            ])
+        }
+
+        candidates.append(contentsOf: [
             "/opt/local/bin/\(command)",
             "/sw/bin/\(command)",
             "/usr/bin/\(command)",
             "/bin/\(command)"
-        ]
+        ])
+
+        return candidates
     }
 }
