@@ -9,6 +9,7 @@ PLIST="${BRIDGE_LAUNCH_AGENT:-$HOME/Library/LaunchAgents/$LABEL.plist}"
 TOKEN_FILE="${BRIDGE_TOKEN_FILE:-$HOME/.codex-iphone-remote-bridge/token}"
 HOST="${BRIDGE_HOST:-127.0.0.1}"
 PORT="${BRIDGE_PORT:-8765}"
+HANDOFF_MAX="${BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES:-200}"
 NPM_BIN="$(command -v npm || true)"
 NODE_BIN="$(command -v node || true)"
 
@@ -61,6 +62,8 @@ cat > "$PLIST" <<PLIST
     <string>$HOST</string>
     <string>--port</string>
     <string>$PORT</string>
+    <string>--mobile-handoff-max-entries</string>
+    <string>$HANDOFF_MAX</string>
     <string>--no-qr</string>
   </array>
   <key>EnvironmentVariables</key>
@@ -106,6 +109,7 @@ Label: $LABEL
 Plist: $PLIST
 Bridge: ws://$HOST:$PORT
 Token file: $TOKEN_FILE
+Mobile handoff retained entries: $HANDOFF_MAX
 
 For physical iPhone or off-Wi-Fi access through Tailscale, run:
   ./scripts/configure-tailscale-bridge.sh

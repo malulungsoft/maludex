@@ -215,7 +215,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.6.16",
+      bridgeVersion: "0.6.17",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -316,7 +316,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.6.16"
+    bridgeVersion: "0.6.17"
   });
 
   ws.send(
@@ -1515,6 +1515,53 @@ test("prunes the private desktop handoff inbox to the configured retention limit
   expect(handoffLines).toHaveLength(3);
   expect(recent.map((entry) => entry.prompt)).toEqual(["prompt-4", "prompt-3", "prompt-2"]);
 
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("passes mobile handoff retention from the bridge server options", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+  const mobileHandoffFile = path.join(temp, "mobile-handoff.jsonl");
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    mobileHandoffFile,
+    mobileHandoffMaxEntries: 2,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_RECENT_CWD: temp,
+      MOCK_CODEX_AUTO_COMPLETE_TURN: "1"
+    },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const ws = await connect(`ws://${address.host}:${address.port}`, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  for (let index = 0; index < 3; index += 1) {
+    ws.send(
+      JSON.stringify({
+        id: `handoff-retention-${index}`,
+        type: "turn.start",
+        threadId: `retention-thread-${index}`,
+        prompt: `prompt-${index}`,
+        cwd: temp
+      })
+    );
+    await waitForMessage(ws, (message) => message.id === `handoff-retention-${index}`);
+  }
+
+  const recent = await readMobileHandoffEntries(mobileHandoffFile, 10);
+  expect(recent.map((entry) => entry.prompt)).toEqual(["prompt-2", "prompt-1"]);
+
+  ws.close();
   await rm(temp, { recursive: true, force: true });
 });
 

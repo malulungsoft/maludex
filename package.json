@@ -1,6 +1,6 @@
 {
   "name": "maludex-bridge",
-  "version": "0.6.16",
+  "version": "0.6.17",
   "description": "Local-first iPhone remote bridge for Codex.",
   "license": "Apache-2.0",
   "private": false,

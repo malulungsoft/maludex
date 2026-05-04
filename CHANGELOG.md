@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.17 - 2026-05-05
+
+- Add `BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES` and `--mobile-handoff-max-entries` to tune how many iPhone-authored handoff prompts are retained.
+- Pass the retention setting through the LaunchAgent installer.
+- Add bridge integration coverage for configured mobile handoff retention.
+
 ## 0.6.16 - 2026-05-05
 
 - Teach `maludex doctor` to flag pairing token files with less than 32 bytes of token material.

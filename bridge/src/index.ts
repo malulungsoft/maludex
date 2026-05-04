@@ -13,6 +13,7 @@ type CliOptions = {
   codexCommand: string;
   codexArgs: string[];
   tokenFile: string;
+  mobileHandoffMaxEntries?: number;
   qr: boolean;
   name: string;
 };
@@ -26,6 +27,7 @@ async function main() {
     host: options.host,
     port: options.port,
     tokenFile: options.tokenFile,
+    mobileHandoffMaxEntries: options.mobileHandoffMaxEntries,
     codexCommand: options.codexCommand,
     codexArgs: options.codexArgs,
     logger
@@ -66,6 +68,10 @@ function parseArgs(args: string[]): CliOptions {
     codexCommand: process.env.CODEX_BIN ?? "codex",
     codexArgs: ["app-server", "--listen", "stdio://"],
     tokenFile: process.env.BRIDGE_TOKEN_FILE ?? defaultTokenFile(),
+    mobileHandoffMaxEntries: parseOptionalBoundedInteger(
+      process.env.BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES,
+      "BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES"
+    ),
     qr: true,
     name: process.env.BRIDGE_NAME ?? hostname()
   };
@@ -82,6 +88,11 @@ function parseArgs(args: string[]): CliOptions {
       options.codexArgs.push(requiredValue(args, ++index, "--codex-arg"));
     } else if (arg === "--token-file") {
       options.tokenFile = requiredValue(args, ++index, "--token-file");
+    } else if (arg === "--mobile-handoff-max-entries") {
+      options.mobileHandoffMaxEntries = parseBoundedInteger(
+        requiredValue(args, ++index, "--mobile-handoff-max-entries"),
+        "--mobile-handoff-max-entries"
+      );
     } else if (arg === "--name") {
       options.name = requiredValue(args, ++index, "--name");
     } else if (arg === "--no-qr") {
@@ -122,6 +133,24 @@ function requiredValue(args: string[], index: number, flag: string): string {
   return value;
 }
 
+function parseOptionalBoundedInteger(value: string | undefined, name: string): number | undefined {
+  if (value === undefined || value.trim() === "") {
+    return undefined;
+  }
+  return parseBoundedInteger(value, name);
+}
+
+function parseBoundedInteger(value: string, name: string): number {
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`${name} must be an integer between 1 and 1000.`);
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1 || parsed > 1_000) {
+    throw new Error(`${name} must be an integer between 1 and 1000.`);
+  }
+  return parsed;
+}
+
 function pairingUriFor(host: string, port: number, token: string, name: string): string {
   const query = new URLSearchParams({
     host,
@@ -143,6 +172,8 @@ Options:
   --host <ip>         Bind to localhost or a specific Tailscale IP. Wildcard binds are refused.
   --port <port>      WebSocket port. Defaults to 8765.
   --token-file <p>   0600 file containing the bearer capability token.
+  --mobile-handoff-max-entries <n>
+                      Keep this many iPhone-authored handoff prompts. Defaults to 200.
   --name <name>      Friendly bridge name shown on the iPhone. Defaults to hostname.
   --codex-bin <bin>  Codex executable. Defaults to codex.
   --codex-arg <arg>  Extra argument appended after: app-server --listen stdio://
