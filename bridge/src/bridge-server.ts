@@ -55,6 +55,9 @@ const DEFAULT_CHAT_TRANSCRIPT_BYTE_LIMIT = 768 * 1024;
 const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
+const BRIDGE_VERSION = "0.1.3";
+const MOBILE_PROTOCOL_VERSION = 1;
+const MIN_CLIENT_PROTOCOL_VERSION = 1;
 
 export type BridgeServerOptions = {
   host?: string;
@@ -194,7 +197,9 @@ export class BridgeServer {
     setImmediate(() => {
       this.send(ws, {
         type: "bridge.ready",
-        protocolVersion: 1,
+        protocolVersion: MOBILE_PROTOCOL_VERSION,
+        minClientProtocolVersion: MIN_CLIENT_PROTOCOL_VERSION,
+        bridgeVersion: BRIDGE_VERSION,
         serverTime: new Date().toISOString(),
         lastEventId: this.lastEventId()
       });

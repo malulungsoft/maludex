@@ -157,6 +157,8 @@ export type MobileResponse =
   | {
       type: "bridge.ready";
       protocolVersion: 1;
+      minClientProtocolVersion: number;
+      bridgeVersion: string;
       serverTime: string;
       lastEventId: number;
     }

@@ -99,6 +99,46 @@ struct ClientModelsTests {
         )
         require(koreanOverrideLocale == "ko-KR", "speech input should use Korean by default even when the device language is English")
 
+        let compatibleReady: [String: JSONValue] = [
+            "protocolVersion": .number(1),
+            "minClientProtocolVersion": .number(1),
+            "bridgeVersion": .string("0.1.2")
+        ]
+        require(bridgeCompatibilityWarning(readyMessage: compatibleReady) == nil, "compatible bridge should not warn")
+        let futureReady: [String: JSONValue] = [
+            "protocolVersion": .number(3),
+            "minClientProtocolVersion": .number(2),
+            "bridgeVersion": .string("0.3.0")
+        ]
+        require(
+            bridgeCompatibilityWarning(readyMessage: futureReady)?.contains("Update maludex iPhone app") == true,
+            "future bridge protocol should ask the user to update the app"
+        )
+        let oldReady: [String: JSONValue] = [
+            "protocolVersion": .number(0),
+            "minClientProtocolVersion": .number(0),
+            "bridgeVersion": .string("0.0.9")
+        ]
+        require(
+            bridgeCompatibilityWarning(readyMessage: oldReady)?.contains("Update maludex bridge") == true,
+            "old bridge protocol should ask the user to update the bridge"
+        )
+
+        let authError = userFacingBridgeError([
+            "code": .string("auth_failed"),
+            "message": .string("Unauthorized")
+        ])
+        require(authError.contains("pair again"), "auth failures should explain pairing recovery")
+        let inactiveTurnError = userFacingBridgeError([
+            "code": .string("bridge_error"),
+            "message": .string("No active turn is tracked for thread thread-1.")
+        ])
+        require(inactiveTurnError.contains("No active Codex turn"), "inactive turn errors should be user-friendly")
+        require(
+            userFacingConnectionError("The Internet connection appears to be offline.").contains("Mac bridge"),
+            "offline connection errors should explain bridge reachability"
+        )
+
         let preferences = MemoryPreferencesStore()
         let secrets = MemorySecretStore()
         let deviceStore = DeviceStateStore(preferences: preferences, secretStore: secrets)

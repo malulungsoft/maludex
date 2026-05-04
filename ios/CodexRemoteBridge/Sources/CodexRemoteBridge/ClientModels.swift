@@ -257,6 +257,69 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
     value.replacingOccurrences(of: "_", with: "-")
 }
 
+let mobileProtocolVersion = 1
+let minimumSupportedBridgeProtocolVersion = 1
+
+func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
+    let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
+    let minimumClientProtocol = Int(readyMessage["minClientProtocolVersion"]?.numberValue ?? 1)
+    let bridgeVersion = readyMessage["bridgeVersion"]?.stringValue ?? "unknown"
+
+    if minimumClientProtocol > mobileProtocolVersion {
+        return "Update maludex iPhone app. This bridge requires mobile protocol \(minimumClientProtocol), but this app supports \(mobileProtocolVersion). Bridge version: \(bridgeVersion)."
+    }
+
+    if bridgeProtocol < minimumSupportedBridgeProtocolVersion {
+        return "Update maludex bridge. This app expects bridge protocol \(minimumSupportedBridgeProtocolVersion) or newer, but the bridge reported \(bridgeProtocol). Bridge version: \(bridgeVersion)."
+    }
+
+    return nil
+}
+
+func userFacingBridgeError(_ error: [String: JSONValue]) -> String {
+    let code = error["code"]?.stringValue ?? ""
+    let message = error["message"]?.stringValue ?? error.description
+    let normalized = message.lowercased()
+
+    if code == "auth_failed" || normalized.contains("unauthorized") || normalized.contains("401") {
+        return "Bridge authentication failed. Please pair again from the Mac bridge QR code, or rotate the token if the QR was exposed."
+    }
+
+    if normalized.contains("no active turn is tracked") {
+        return "No active Codex turn is running for this chat. The stop request was ignored."
+    }
+
+    if normalized.contains("start a thread") {
+        return "Start or open a chat before sending a prompt."
+    }
+
+    if normalized.contains("larger than 15 mb") {
+        return "Attachment is larger than 15 MB. Choose a smaller file."
+    }
+
+    if normalized.contains("not connected") || normalized.contains("still connecting") {
+        return userFacingConnectionError(message)
+    }
+
+    return message
+}
+
+func userFacingConnectionError(_ message: String) -> String {
+    let normalized = message.lowercased()
+
+    if normalized.contains("offline")
+        || normalized.contains("could not connect")
+        || normalized.contains("cannot connect")
+        || normalized.contains("network connection was lost")
+        || normalized.contains("timed out")
+        || normalized.contains("not connected")
+        || normalized.contains("still connecting") {
+        return "Cannot reach the Mac bridge. Check that maludex bridge is running, the iPhone is on the same Tailscale/Nginx route, and the pairing address is correct."
+    }
+
+    return message
+}
+
 struct ChatThreadOption: Identifiable, Equatable {
     let id: String
     let title: String

@@ -157,7 +157,12 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
 
   const ws = await connect(wsUrl, token);
   const ready = await waitForMessage(ws, (message) => message.type === "bridge.ready");
-  expect(ready).toMatchObject({ lastEventId: 0 });
+  expect(ready).toMatchObject({
+    lastEventId: 0,
+    protocolVersion: 1,
+    minClientProtocolVersion: 1,
+    bridgeVersion: "0.1.3"
+  });
 
   ws.send(
     JSON.stringify({

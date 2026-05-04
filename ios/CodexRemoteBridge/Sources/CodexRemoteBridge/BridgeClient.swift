@@ -160,7 +160,7 @@ final class BridgeClient: ObservableObject {
             refreshSavedPairingState()
             restorePersistedState()
         } catch {
-            lastError = error.localizedDescription
+            lastError = userFacingBridgeError(["message": .string(error.localizedDescription)])
         }
 
         var components = URLComponents(url: pairing.websocketURL, resolvingAgainstBaseURL: false)!
@@ -186,7 +186,7 @@ final class BridgeClient: ObservableObject {
             }
             connect(pairing: savedPairing)
         } catch {
-            lastError = error.localizedDescription
+            lastError = userFacingConnectionError(error.localizedDescription)
             refreshSavedPairingState()
         }
     }
@@ -215,7 +215,7 @@ final class BridgeClient: ObservableObject {
             }
             connect(pairing: savedPairing)
         } catch {
-            lastError = error.localizedDescription
+            lastError = userFacingConnectionError(error.localizedDescription)
             refreshSavedPairingState()
         }
     }
@@ -233,7 +233,7 @@ final class BridgeClient: ObservableObject {
         do {
             try stateStore.clear()
         } catch {
-            lastError = error.localizedDescription
+            lastError = userFacingBridgeError(["message": .string(error.localizedDescription)])
         }
 
         suppressPersistence = true
@@ -274,7 +274,7 @@ final class BridgeClient: ObservableObject {
             restorePersistedState()
             refreshSavedPairingState()
         } catch {
-            lastError = error.localizedDescription
+            lastError = userFacingBridgeError(["message": .string(error.localizedDescription)])
         }
     }
 
@@ -510,7 +510,7 @@ final class BridgeClient: ObservableObject {
     private func send(_ body: [String: JSONValue], reportErrors: Bool = true) {
         guard let task, connectionState == .connected else {
             if reportErrors {
-                lastError = connectionState == .connecting ? "Bridge is still connecting." : "Bridge is not connected."
+                lastError = userFacingConnectionError(connectionState == .connecting ? "Bridge is still connecting." : "Bridge is not connected.")
             }
             if !manuallyDisconnected {
                 scheduleReconnect()
@@ -528,7 +528,7 @@ final class BridgeClient: ObservableObject {
             }
         } catch {
             if reportErrors {
-                lastError = error.localizedDescription
+                lastError = userFacingBridgeError(["message": .string(error.localizedDescription)])
             }
         }
     }
@@ -561,7 +561,7 @@ final class BridgeClient: ObservableObject {
         isLoadingOlderTranscript = false
         appendEvent("bridge", "connection lost: \(error.localizedDescription)")
         if reportError {
-            lastError = error.localizedDescription
+            lastError = userFacingConnectionError(error.localizedDescription)
         }
         scheduleReconnect()
     }
@@ -654,7 +654,11 @@ final class BridgeClient: ObservableObject {
                 reconnectAttempt = 0
                 cancelReconnect()
                 startHeartbeat()
-                appendEvent("bridge", "ready")
+                if let warning = bridgeCompatibilityWarning(readyMessage: object) {
+                    lastError = warning
+                }
+                let version = object["bridgeVersion"]?.stringValue ?? "unknown"
+                appendEvent("bridge", "ready \(version)")
                 refreshProjects()
                 refreshModels()
                 refreshChats()
@@ -668,7 +672,7 @@ final class BridgeClient: ObservableObject {
                 appendEvent(type, JSONValue.object(object).description)
             }
         } catch {
-            lastError = error.localizedDescription
+            lastError = userFacingBridgeError(["message": .string(error.localizedDescription)])
         }
     }
 
@@ -678,7 +682,11 @@ final class BridgeClient: ObservableObject {
                id.hasPrefix("ios-chat-history") {
                 isLoadingOlderTranscript = false
             }
-            lastError = object["error"]?.description
+            if let error = object["error"]?.objectValue {
+                lastError = userFacingBridgeError(error)
+            } else {
+                lastError = userFacingBridgeError(["message": object["error"] ?? .string("Bridge request failed.")])
+            }
             return
         }
 

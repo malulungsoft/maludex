@@ -1,6 +1,6 @@
 # maludex
 
-Current version: `v0.1.2`
+Current version: `v0.1.3`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 

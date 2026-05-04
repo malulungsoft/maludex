@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 - 2026-05-04
+
+- Add bridge/client protocol compatibility metadata to `bridge.ready`.
+- Show clearer iOS messages for unreachable bridge, authentication, inactive stop, and request failures.
+- Surface bridge version in the iOS connection event stream.
+
 ## 0.1.2 - 2026-05-04
 
 - Document an Nginx TLS reverse-proxy deployment option while keeping the bridge bound to loopback.
