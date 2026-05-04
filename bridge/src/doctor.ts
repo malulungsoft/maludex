@@ -114,6 +114,17 @@ export function analyzeDoctorSnapshot(snapshot: DoctorSnapshot): DoctorReport {
         repairable: true
       });
     }
+
+    const bindHost = bridgeBindHost(snapshot.launchAgent.programArguments);
+    if (bindHost && isWildcardBindHost(bindHost)) {
+      issues.push({
+        code: "launch_agent_wildcard_host",
+        severity: "error",
+        title: "LaunchAgent uses an unsafe wildcard bridge host",
+        detail: `The bridge refuses wildcard WebSocket binds such as ${bindHost}. Use 127.0.0.1, ::1, or a specific Tailscale IP instead.`,
+        repairable: true
+      });
+    }
   }
 
   if (!snapshot.tokenFile?.exists) {
@@ -212,6 +223,18 @@ function bridgeEntrypoint(programArguments: string[] | undefined): string | null
     return null;
   }
   return programArguments.find((argument) => argument.endsWith("/dist/bridge/src/index.js")) ?? null;
+}
+
+function bridgeBindHost(programArguments: string[] | undefined): string | null {
+  const hostIndex = programArguments?.indexOf("--host") ?? -1;
+  if (hostIndex < 0) {
+    return null;
+  }
+  return programArguments?.[hostIndex + 1] ?? null;
+}
+
+function isWildcardBindHost(host: string): boolean {
+  return host === "0.0.0.0" || host === "::";
 }
 
 function statusForIssues(issues: DoctorIssue[]): DoctorStatus {

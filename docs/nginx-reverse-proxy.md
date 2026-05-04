@@ -23,7 +23,7 @@ Security properties:
 - `maludex` still requires `Authorization: Bearer <token>` on every WebSocket
   upgrade.
 - The token still lives in a `0600` file.
-- The bridge still refuses `0.0.0.0` and `::`.
+- The bridge still refuses `0.0.0.0` and `::`, and `maludex doctor` flags LaunchAgents that try to use those wildcard hosts.
 - Nginx adds TLS in front of the local bridge.
 
 ## Run The Bridge On Loopback

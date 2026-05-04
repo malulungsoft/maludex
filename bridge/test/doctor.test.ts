@@ -100,6 +100,47 @@ describe("analyzeDoctorSnapshot", () => {
     expect(report.issues).toHaveLength(0);
   });
 
+  test("marks a LaunchAgent wildcard host as repairable before the bridge starts", () => {
+    const report = analyzeDoctorSnapshot({
+      repoRoot: "/Users/malulung/Documents/maludex",
+      packageVersion: "0.6.13",
+      launchAgent: {
+        exists: true,
+        plistPath: "/Users/malulung/Library/LaunchAgents/com.maludex.bridge.plist",
+        workingDirectory: "/Users/malulung/Documents/maludex",
+        programArguments: [
+          "/opt/homebrew/bin/node",
+          "/Users/malulung/Documents/maludex/dist/bridge/src/index.js",
+          "--host",
+          "0.0.0.0",
+          "--port",
+          "8765",
+          "--no-qr"
+        ],
+        state: "spawn scheduled"
+      },
+      tokenFile: {
+        path: "/Users/malulung/.codex-iphone-remote-bridge/token",
+        exists: true,
+        mode: "600",
+        isFile: true,
+        bytes: 44
+      }
+    });
+
+    expect(report.status).toBe("error");
+    expect(report.primaryAction).toBe("repair");
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "launch_agent_wildcard_host",
+          severity: "error",
+          repairable: true
+        })
+      ])
+    );
+  });
+
   test("redacts token-like values from copied diagnostics", () => {
     const report = redactedDoctorReport({
       status: "error",

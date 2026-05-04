@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.14 - 2026-05-05
+
+- Teach `maludex doctor` to flag LaunchAgents configured with unsafe wildcard bridge hosts such as `0.0.0.0` or `::`.
+- Mark wildcard host repairs as repairable so the Control Center can guide users back to localhost or a specific Tailscale IP.
+- Add doctor regression coverage for unsafe external bind detection before the bridge starts.
+
 ## 0.6.13 - 2026-05-05
 
 - Prune the private desktop mobile-handoff inbox to the most recent 200 entries by default.
