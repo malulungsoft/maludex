@@ -1,6 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
+import { chmod, mkdir, rename, writeFile } from "node:fs/promises";
 import type { IncomingMessage } from "node:http";
+import path from "node:path";
 
 const MIN_TOKEN_BYTES = 32;
 const REQUIRED_TOKEN_MODE = 0o600;
@@ -27,6 +29,18 @@ export function loadCapabilityTokenFromFile(path: string): string {
   return token;
 }
 
+export async function rotateCapabilityTokenFile(tokenFile: string): Promise<string> {
+  const token = generateCapabilityToken();
+  const directory = path.dirname(tokenFile);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const tempFile = path.join(directory, `.token-${process.pid}-${Date.now()}.tmp`);
+  await writeFile(tempFile, `${token}\n`, { mode: REQUIRED_TOKEN_MODE, flag: "wx" });
+  await chmod(tempFile, REQUIRED_TOKEN_MODE);
+  await rename(tempFile, tokenFile);
+  await chmod(tokenFile, REQUIRED_TOKEN_MODE);
+  return token;
+}
+
 export class CapabilityAuthenticator {
   private readonly tokenDigest: Buffer;
 
@@ -43,6 +57,11 @@ export class CapabilityAuthenticator {
       return false;
     }
 
+    const presented = digest(token);
+    return presented.length === this.tokenDigest.length && timingSafeEqual(presented, this.tokenDigest);
+  }
+
+  hasSameToken(token: string): boolean {
     const presented = digest(token);
     return presented.length === this.tokenDigest.length && timingSafeEqual(presented, this.tokenDigest);
   }

@@ -6,7 +6,7 @@ Open `CodexRemoteBridge.xcodeproj` in Xcode. It already contains a minimal iOS S
 
 The installed app display name is `maludex`. The target uses bundle id `com.local.CodexRemoteBridge`, iPhone-only device family, and iOS 17.0 deployment target. No personal development team is committed. In Xcode, set your Apple development team under Signing & Capabilities before running on a physical iPhone, and change the bundle id if Xcode asks for a unique value.
 
-The client stores each paired bridge token in iOS Keychain after scanning or pasting a QR pairing URI. It stores the last selected bridge plus per-bridge project, model, intelligence level, permission mode, compaction setting, active thread, event id, and recent transcript in local device preferences. Use a bridge row's `Forget` action to remove one saved PC, or `Forget all` to clear every token and local session state.
+The client stores each paired bridge token in iOS Keychain after scanning or pasting a QR pairing URI. It stores the last selected bridge plus per-bridge project, model, intelligence level, permission mode, compaction setting, active thread, event id, and recent transcript in local device preferences. Use a bridge row's `Forget` action to remove one saved PC, or `Forget all` to clear every token and local session state. After rotating a Mac token, forget the old bridge entry and scan the new QR.
 
 Implemented screens:
 

@@ -1,6 +1,6 @@
 # maludex
 
-Current version: `v0.1.3`
+Current version: `v0.1.4`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 
@@ -142,6 +142,27 @@ Pairing options in the app:
 - Scan each additional Mac's QR to add it to the bridge switcher.
 
 The iOS app stores each bridge token in Keychain. Non-token session state, such as the selected project, active thread, event id, and recent transcript, is stored locally on the device per bridge ID so histories do not bleed across saved Macs.
+
+## Rotate A Pairing Token
+
+If a QR code, pairing payload, or paired iPhone may be exposed, rotate the Mac
+bridge token and pair again:
+
+```bash
+npm run rotate-token -- --host <host-for-iphone> --port 8765 --name "Studio Mac"
+```
+
+For an Nginx/TLS endpoint:
+
+```bash
+npm run rotate-token -- --host maludex.example.com --port 443 --tls --name "Studio Mac" --qr-file /tmp/maludex-pairing.png
+```
+
+The command replaces the token file with a new `0600` high-entropy token and
+prints or writes a new QR without printing the raw token. A running bridge
+detects the token file change and disconnects the currently paired iPhone; old
+QR codes stop working. In the iPhone app, use `Forget` on the old bridge entry
+and scan the new QR.
 
 ## Multiple Macs
 

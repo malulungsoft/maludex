@@ -1,6 +1,6 @@
 {
   "name": "maludex-bridge",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Local-first iPhone remote bridge for Codex.",
   "license": "Apache-2.0",
   "private": false,
@@ -12,6 +12,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx bridge/src/index.ts",
+    "rotate-token": "npm run build --silent && node dist/bridge/src/rotate-token.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.11",
+    "@types/qrcode": "^1.5.6",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/ws": "^8.5.10",
     "tsx": "^4.16.2",

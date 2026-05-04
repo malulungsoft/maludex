@@ -55,7 +55,7 @@ const DEFAULT_CHAT_TRANSCRIPT_BYTE_LIMIT = 768 * 1024;
 const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
-const BRIDGE_VERSION = "0.1.3";
+const BRIDGE_VERSION = "0.1.4";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 
@@ -80,7 +80,9 @@ export class BridgeServer {
   private readonly host: string;
   private readonly port: number;
   private readonly logger: Logger;
-  private readonly authenticator: CapabilityAuthenticator;
+  private readonly tokenFile: string;
+  private authenticator: CapabilityAuthenticator;
+  private tokenPollTimer: NodeJS.Timeout | null = null;
   private readonly codex: CodexRpcClient;
   private httpServer: HttpServer | null = null;
   private wss: WebSocketServer | null = null;
@@ -105,6 +107,7 @@ export class BridgeServer {
     this.host = options.host ?? "127.0.0.1";
     this.port = options.port ?? 8765;
     this.logger = options.logger ?? createLogger();
+    this.tokenFile = options.tokenFile;
     this.authenticator = new CapabilityAuthenticator(loadCapabilityTokenFromFile(options.tokenFile));
     this.eventReplayLimit = options.eventReplayLimit ?? 500;
     this.highWatermarkBytes = options.highWatermarkBytes ?? 1024 * 1024;
@@ -126,10 +129,12 @@ export class BridgeServer {
     this.codex.on("notification", (message) => this.handleCodexNotification(message));
     this.codex.on("serverRequest", (message) => this.handleCodexServerRequest(message));
     await this.codex.start();
+    this.startTokenPolling();
 
     this.httpServer = createServer();
     this.wss = new WebSocketServer({ noServer: true });
     this.httpServer.on("upgrade", (request, socket, head) => {
+      this.reloadTokenIfChanged();
       if (!this.authenticator.isAuthorized(request)) {
         socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
         socket.destroy();
@@ -150,6 +155,7 @@ export class BridgeServer {
   }
 
   async stop(): Promise<void> {
+    this.stopTokenPolling();
     this.declinePendingApprovals();
     if (this.mobile?.readyState === WebSocket.OPEN) {
       this.mobile.close(1001, "bridge stopping");
@@ -179,6 +185,41 @@ export class BridgeServer {
   private validateBindHost(): void {
     if (this.host === "0.0.0.0" || this.host === "::") {
       throw new Error("Wildcard WebSocket binds are disabled. Bind to 127.0.0.1, ::1, or a specific Tailscale IP.");
+    }
+  }
+
+  private startTokenPolling(): void {
+    this.stopTokenPolling();
+    this.tokenPollTimer = setInterval(() => {
+      this.reloadTokenIfChanged();
+    }, 1000);
+    this.tokenPollTimer.unref();
+  }
+
+  private stopTokenPolling(): void {
+    if (this.tokenPollTimer) {
+      clearInterval(this.tokenPollTimer);
+      this.tokenPollTimer = null;
+    }
+  }
+
+  private reloadTokenIfChanged(): void {
+    let token: string;
+    try {
+      token = loadCapabilityTokenFromFile(this.tokenFile);
+    } catch (error) {
+      this.logger.warn("mobile.token_reload_failed", {
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return;
+    }
+    if (this.authenticator.hasSameToken(token)) {
+      return;
+    }
+    this.authenticator = new CapabilityAuthenticator(token);
+    this.logger.warn("mobile.token_rotated");
+    if (this.mobile?.readyState === WebSocket.OPEN) {
+      this.mobile.close(4001, "pairing token rotated");
     }
   }
 

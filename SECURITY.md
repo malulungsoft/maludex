@@ -15,5 +15,6 @@ Please open a private security advisory on GitHub if the repository settings all
 - Do not expose the bridge through public router port forwarding.
 - Use localhost for simulator testing or a private Tailscale IP for physical iPhone usage.
 - Rotate the bearer token after demos, screenshots, or suspected exposure.
+- Use `npm run rotate-token -- --host <host-for-iphone> --port 8765` instead of editing the token file by hand. The command preserves `0600` permissions and avoids printing the raw token.
 - Keep approval mode on request unless you fully understand the local risk.
 - A paired and unlocked iPhone should be treated as a trusted device with access to recent transcript content and approval controls.

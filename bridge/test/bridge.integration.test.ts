@@ -9,6 +9,7 @@ import { afterEach, expect, test } from "vitest";
 import { BridgeServer } from "../src/bridge-server.js";
 import { createLogger } from "../src/logger.js";
 import { QueuedWebSocketSender } from "../src/queued-websocket-sender.js";
+import { rotateCapabilityTokenFile } from "../src/auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturePath = path.join(__dirname, "fixtures", "mock-codex-app-server.mjs");
@@ -129,6 +130,45 @@ test("rejects token files that are not readable only by the owner", async () => 
   await rm(temp, { recursive: true, force: true });
 });
 
+test("rotating the token file invalidates old websocket credentials without restarting", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const wsUrl = `ws://${address.host}:${address.port}`;
+  const ws = await connect(wsUrl, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  const rotated = await rotateCapabilityTokenFile(tokenFile);
+  expect(rotated).not.toBe(token);
+  await expect(connect(wsUrl, token)).rejects.toThrow(/unexpected response 401/);
+
+  const closed = new Promise<{ code: number; reason: string }>((resolve) => {
+    ws.once("close", (code, reason) => {
+      resolve({ code, reason: reason.toString() });
+    });
+  });
+  const newWs = await connect(wsUrl, rotated);
+  await waitForMessage(newWs, (message) => message.type === "bridge.ready");
+  await expect(closed).resolves.toMatchObject({ code: 4001 });
+
+  ws.close();
+  newWs.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
 test("bridges authenticated iPhone messages to codex stdio JSONL and approval responses", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
   const reportFile = path.join(temp, "mock-report.jsonl");
@@ -161,7 +201,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.1.3"
+    bridgeVersion: "0.1.4"
   });
 
   ws.send(

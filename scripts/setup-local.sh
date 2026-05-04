@@ -38,5 +38,6 @@ Background LaunchAgent:
   ./scripts/configure-tailscale-bridge.sh
 
 The bridge reads its QR capability token from ~/.codex-iphone-remote-bridge/token by default.
-The token file must remain chmod 600; replace it when you want to rotate pairing.
+The token file must remain chmod 600. Rotate pairing safely with:
+  npm run rotate-token -- --host <host-for-iphone> --port 8765 --name "Studio Mac"
 EOF

@@ -46,7 +46,7 @@ There is no cloud relay in this MVP.
 | Attachments write unexpected locations | Attachments are written only under the selected workspace's `.codex-mobile-attachments/` directory with safe filenames and `0600` permissions. |
 | Attachment payload exhausts memory or disk | Bridge limits attachments to 5 per turn and 15 MB each. |
 | Approval request arrives while phone is offline | Bridge buffers approval events with event IDs for the next authenticated reconnect. |
-| Stolen QR token reused | Token is high-entropy and file-protected, but remains valid until the token file is rotated. |
+| Stolen QR token reused | Token is high-entropy and file-protected. `npm run rotate-token` replaces it with a new `0600` token, and the running bridge disconnects existing mobile clients after detecting the file change. |
 | Slow client consumes unbounded memory | Bridge queues outbound frames up to a cap, then closes the slow client. |
 
 ## Residual Risks
@@ -80,4 +80,4 @@ There is no cloud relay in this MVP.
 4. Restart the bridge after pairing demos or whenever the QR code may have been exposed.
 5. Keep approvals on request.
 6. Stop the bridge when not actively using the remote client.
-7. Rotate the token by replacing the token file with a new `0600` high-entropy value.
+7. Rotate the token with `npm run rotate-token -- --host <host-for-iphone> --port 8765`.

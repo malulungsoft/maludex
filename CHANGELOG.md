@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 - 2026-05-04
+
+- Add `npm run rotate-token` to replace the bridge pairing token and generate a fresh QR.
+- Detect token file changes in the running bridge and disconnect existing mobile clients after rotation.
+- Reject old bearer credentials immediately after token rotation.
+
 ## 0.1.3 - 2026-05-04
 
 - Add bridge/client protocol compatibility metadata to `bridge.ready`.
