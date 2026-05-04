@@ -321,6 +321,35 @@ func userFacingConnectionError(_ message: String) -> String {
     return message
 }
 
+func messageRelativeTime(from date: Date, now: Date = Date()) -> String {
+    let elapsed = max(0, Int(now.timeIntervalSince(date)))
+    if elapsed < 60 {
+        return "방금 전"
+    }
+
+    let minutes = elapsed / 60
+    if minutes < 60 {
+        return "\(minutes)분 전"
+    }
+
+    let hours = minutes / 60
+    if hours < 24 {
+        return "\(hours)시간 전"
+    }
+
+    let days = hours / 24
+    if days < 30 {
+        return "\(days)일 전"
+    }
+
+    let months = days / 30
+    if months < 12 {
+        return "\(months)개월 전"
+    }
+
+    return "\(months / 12)년 전"
+}
+
 struct BridgeDiagnostics: Equatable {
     struct ActiveTurn: Equatable {
         let threadId: String

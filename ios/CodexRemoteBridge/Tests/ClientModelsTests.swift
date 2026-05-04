@@ -64,6 +64,12 @@ struct ClientModelsTests {
         require(history?.attachments.count == 2, "remote transcript attachments should decode")
         require(history?.transcriptEntry.attachments.first?.filename == "photo.png", "transcript entry should carry attachments")
 
+        let now = Date(timeIntervalSince1970: 1_000)
+        require(messageRelativeTime(from: Date(timeIntervalSince1970: 970), now: now) == "방금 전", "message time should show just now under one minute")
+        require(messageRelativeTime(from: Date(timeIntervalSince1970: 880), now: now) == "2분 전", "message time should show minutes")
+        require(messageRelativeTime(from: Date(timeIntervalSince1970: 1_000 - 7_200), now: now) == "2시간 전", "message time should show hours")
+        require(messageRelativeTime(from: Date(timeIntervalSince1970: 1_000 - 172_800), now: now) == "2일 전", "message time should show days")
+
         let attachment = MobileAttachment(
             kind: .file,
             filename: "notes.txt",

@@ -1327,6 +1327,19 @@ private struct TranscriptBubble: View {
                 }
 
                 TranscriptAttachmentGrid(attachments: entry.attachments)
+
+                HStack {
+                    if entry.role == .user {
+                        Spacer(minLength: 0)
+                    }
+                    Text(messageRelativeTime(from: entry.createdAt))
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    if entry.role != .user {
+                        Spacer(minLength: 0)
+                    }
+                }
+                .frame(maxWidth: .infinity)
             }
             .padding(12)
             .background(background, in: RoundedRectangle(cornerRadius: 8))
