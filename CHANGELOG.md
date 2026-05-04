@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.12 - 2026-05-05
+
+- Show the iOS local notification authorization status in the in-app Diagnostics screen.
+- Refresh notification authorization state when the app foreground/background state changes.
+- Add English/Korean labels for notification diagnostics so approval-alert issues are easier to debug on-device.
+
 ## 0.6.11 - 2026-05-05
 
 - Re-schedule local iOS approval reminders when maludex is sent to the background while approval cards are still pending.

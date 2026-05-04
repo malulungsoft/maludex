@@ -976,6 +976,7 @@ private struct DiagnosticsSheet: View {
             List {
                 Section(bridge.copy.diagnosticsConnectionTitle) {
                     DiagnosticRow(title: bridge.copy.appVersionTitle, value: maludexClientVersion)
+                    DiagnosticRow(title: bridge.copy.notificationsTitle, value: bridge.copy.notificationStatusTitle(bridge.notificationAuthorizationStatus.rawValue))
                     DiagnosticRow(title: bridge.copy.stateTitle, value: bridge.copy.connectionState(bridge.connectionState.rawValue))
                     DiagnosticRow(title: bridge.copy.bridgeTitle, value: bridge.activeBridgeLabel)
                     DiagnosticRow(title: bridge.copy.activeThreadTitle, value: bridge.threadId.isEmpty ? bridge.copy.noActiveThread : bridge.threadId)

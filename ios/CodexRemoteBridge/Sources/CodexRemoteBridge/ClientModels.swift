@@ -359,6 +359,7 @@ struct AppCopy: Equatable {
     var pairAnotherPCSubtitle: String { text("Pair another PC by scanning that PC's maludex QR.", "다른 PC의 maludex QR을 스캔해서 추가로 페어링하세요.") }
     var diagnosticsConnectionTitle: String { text("Connection", "연결") }
     var appVersionTitle: String { text("App version", "앱 버전") }
+    var notificationsTitle: String { text("Notifications", "알림") }
     var stateTitle: String { text("State", "상태") }
     var bridgeTitle: String { text("Bridge", "브릿지") }
     var bridgeVersionTitle: String { text("Bridge version", "브릿지 버전") }
@@ -448,6 +449,23 @@ struct AppCopy: Equatable {
         }
     }
 
+    func notificationStatusTitle(_ value: String) -> String {
+        switch value {
+        case "notDetermined":
+            return text("Not determined", "미설정")
+        case "denied":
+            return text("Denied", "거부됨")
+        case "authorized":
+            return text("Authorized", "허용됨")
+        case "provisional":
+            return text("Provisional", "임시 허용")
+        case "ephemeral":
+            return text("Ephemeral", "임시 세션")
+        default:
+            return text("Unknown", "알 수 없음")
+        }
+    }
+
     private func text(_ english: String, _ korean: String) -> String {
         language == .korean ? korean : english
     }
@@ -491,7 +509,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.6.11"
+let maludexClientVersion = "0.6.12"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)

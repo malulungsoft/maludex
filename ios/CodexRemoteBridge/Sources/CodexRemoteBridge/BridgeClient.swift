@@ -14,6 +14,32 @@ enum ConnectionState: String, Equatable {
     case failed = "Connection issue"
 }
 
+enum MobileNotificationAuthorizationStatus: String, Equatable {
+    case unknown
+    case notDetermined
+    case denied
+    case authorized
+    case provisional
+    case ephemeral
+
+    init(_ status: UNAuthorizationStatus) {
+        switch status {
+        case .notDetermined:
+            self = .notDetermined
+        case .denied:
+            self = .denied
+        case .authorized:
+            self = .authorized
+        case .provisional:
+            self = .provisional
+        case .ephemeral:
+            self = .ephemeral
+        @unknown default:
+            self = .unknown
+        }
+    }
+}
+
 struct ApprovalRequest: Identifiable, Equatable {
     let id: String
     let method: String
@@ -72,6 +98,7 @@ final class BridgeClient: ObservableObject {
     @Published private(set) var savedBridges: [SavedBridge] = []
     @Published private(set) var activeBridgeId = ""
     @Published private(set) var diagnostics: BridgeDiagnostics?
+    @Published private(set) var notificationAuthorizationStatus = MobileNotificationAuthorizationStatus.unknown
     @Published var selectedProjectPath = "" {
         didSet { persistSnapshot() }
     }
@@ -171,13 +198,27 @@ final class BridgeClient: ObservableObject {
         self.stateStore = stateStore
         restorePersistedState()
         refreshSavedPairingState()
-        notificationScheduler.requestAuthorizationIfNeeded()
+        notificationScheduler.requestAuthorizationIfNeeded { [weak self] in
+            Task { @MainActor in
+                self?.refreshNotificationAuthorizationStatus()
+            }
+        }
+        refreshNotificationAuthorizationStatus()
     }
 
     func setAppIsActive(_ isActive: Bool) {
         appIsActive = isActive
+        refreshNotificationAuthorizationStatus()
         if !isActive {
             schedulePendingApprovalNotifications()
+        }
+    }
+
+    func refreshNotificationAuthorizationStatus() {
+        notificationScheduler.authorizationStatus { [weak self] status in
+            Task { @MainActor in
+                self?.notificationAuthorizationStatus = MobileNotificationAuthorizationStatus(status)
+            }
         }
     }
 
@@ -1316,12 +1357,21 @@ private final class LocalNotificationScheduler {
     private let center = UNUserNotificationCenter.current()
     private var requestedAuthorization = false
 
-    func requestAuthorizationIfNeeded() {
+    func requestAuthorizationIfNeeded(completion: (() -> Void)? = nil) {
         guard !requestedAuthorization else {
+            completion?()
             return
         }
         requestedAuthorization = true
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        center.requestAuthorization(options: [.alert, .sound]) { _, _ in
+            completion?()
+        }
+    }
+
+    func authorizationStatus(completion: @escaping (UNAuthorizationStatus) -> Void) {
+        center.getNotificationSettings { settings in
+            completion(settings.authorizationStatus)
+        }
     }
 
     func schedule(_ intent: MobileNotificationIntent) {
