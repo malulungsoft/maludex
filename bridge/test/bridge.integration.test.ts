@@ -197,7 +197,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.6.2",
+      bridgeVersion: "0.6.3",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -298,7 +298,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.6.2"
+    bridgeVersion: "0.6.3"
   });
 
   ws.send(
@@ -1314,6 +1314,63 @@ test("steers the active Codex turn with additional mobile input", async () => {
       input: [{ type: "text", text: "prioritize the failing test first", text_elements: [] }]
     }
   });
+
+  ws.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("writes iPhone-authored prompts to a private desktop handoff inbox", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+  const mobileHandoffFile = path.join(temp, "mobile-handoff.jsonl");
+  const prompt = "데스크톱 Codex가 이어받아야 하는 아이폰 지시";
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    mobileHandoffFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_RECENT_CWD: temp
+    },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const ws = await connect(`ws://${address.host}:${address.port}`, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(
+    JSON.stringify({
+      id: "mobile-handoff-turn",
+      type: "turn.start",
+      threadId: "recent-thread-1",
+      prompt,
+      cwd: temp,
+      model: "gpt-5"
+    })
+  );
+  await waitForMessage(ws, (message) => message.id === "mobile-handoff-turn");
+
+  const handoffStat = await stat(mobileHandoffFile);
+  const handoffLines = (await readFile(mobileHandoffFile, "utf8")).trim().split("\n");
+  const entry = JSON.parse(handoffLines[0]) as Record<string, unknown>;
+
+  expect((handoffStat.mode & 0o777).toString(8)).toBe("600");
+  expect(entry).toMatchObject({
+    source: "iphone",
+    kind: "turn.start",
+    threadId: "recent-thread-1",
+    cwd: temp,
+    model: "gpt-5",
+    prompt
+  });
+  expect(JSON.stringify(entry)).not.toContain("dataBase64");
 
   ws.close();
   await rm(temp, { recursive: true, force: true });

@@ -32,6 +32,7 @@ There is no cloud relay in this MVP.
 | Token file readable by other users | Bridge refuses token files whose permissions are not exactly `0600`. |
 | Token visible in bridge logs | The QR URI is rendered as a QR code; raw token text is not printed by the CLI logger. |
 | Prompt leakage through logs | Bridge logs metadata and prompt byte length only. |
+| Desktop handoff inbox leaks prompt bodies | The handoff inbox is separate from bridge logs, stored outside the repo at `~/.codex-iphone-remote-bridge/mobile-handoff.jsonl`, and forced to `0600`; docs warn not to commit or share it. |
 | Remote command execution without review | Threads and turns default to `on-request`; approvals are forwarded to the phone. |
 | Excessive filesystem access | Thread default sandbox is `read-only`; workspace-write must be requested explicitly. Mobile clients cannot request `danger-full-access`. |
 | Accidental no-approval mode | The bridge rejects mobile attempts to use `approvalPolicy: "never"` and falls back to `on-request`. |
@@ -61,6 +62,7 @@ There is no cloud relay in this MVP.
 - Approval params can include sensitive command paths or filenames because the phone needs them for review.
 - Project lists and attachment filenames can reveal local metadata to anyone holding the pairing token.
 - Chat titles, previews, and restored transcript content can be sensitive; a paired iPhone should be treated as trusted while connected.
+- The desktop handoff inbox can contain iPhone prompt bodies. It is private local state, not public diagnostics; deleting it removes that recovery trail.
 - Saved iOS transcript content remains on the device until the user taps `Forget` or deletes the app.
 
 ## Security Invariants

@@ -8,6 +8,7 @@ import WebSocket, { WebSocketServer } from "ws";
 import { CapabilityAuthenticator, loadCapabilityTokenFromFile } from "./auth.js";
 import { CodexRpcClient } from "./codex-rpc.js";
 import { createLogger, type Logger } from "./logger.js";
+import { MobileHandoffStore, handoffAttachments, type NewMobileHandoffEntry } from "./mobile-handoff-store.js";
 import { QueuedWebSocketSender } from "./queued-websocket-sender.js";
 import {
   asJsonValue,
@@ -69,7 +70,7 @@ const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
 const MAX_PROMPT_QUEUE_ITEMS = 50;
-const BRIDGE_VERSION = "0.6.2";
+const BRIDGE_VERSION = "0.6.3";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 
@@ -89,6 +90,7 @@ export type BridgeServerOptions = {
   maxAttachmentBytes?: number;
   maxAttachmentsPerTurn?: number;
   promptQueueFile?: string;
+  mobileHandoffFile?: string;
 };
 
 export class BridgeServer {
@@ -118,6 +120,7 @@ export class BridgeServer {
   private readonly maxAttachmentBytes: number;
   private readonly maxAttachmentsPerTurn: number;
   private readonly promptQueueFile: string;
+  private readonly mobileHandoffStore: MobileHandoffStore;
   private nextEventId = 1;
   private nextPromptQueueId = 1;
   private readonly threadCwds = new Map<string, string>();
@@ -136,6 +139,9 @@ export class BridgeServer {
     this.maxAttachmentBytes = options.maxAttachmentBytes ?? 15 * 1024 * 1024;
     this.maxAttachmentsPerTurn = options.maxAttachmentsPerTurn ?? 5;
     this.promptQueueFile = options.promptQueueFile ?? path.join(path.dirname(options.tokenFile), "prompt-queue.json");
+    this.mobileHandoffStore = new MobileHandoffStore(
+      options.mobileHandoffFile ?? path.join(path.dirname(options.tokenFile), "mobile-handoff.jsonl")
+    );
     this.codex = new CodexRpcClient({
       command: options.codexCommand,
       args: options.codexArgs,
@@ -413,6 +419,15 @@ export class BridgeServer {
       };
       const promptBytes = Buffer.byteLength(message.prompt, "utf8");
       const attachmentCount = Array.isArray(message.attachments) ? message.attachments.length : 0;
+      await this.recordMobileHandoff({
+        kind: "turn.start",
+        threadId: message.threadId,
+        cwd,
+        model: typeof message.model === "string" ? message.model : undefined,
+        prompt: message.prompt,
+        promptBytes,
+        attachments: handoffAttachments(message.attachments)
+      });
 
       this.logger.info(shouldQueue ? "mobile.turn_queued" : "mobile.turn_start", {
         id: message.id,
@@ -492,11 +507,21 @@ export class BridgeServer {
 
     const cwd = typeof message.cwd === "string" ? message.cwd : this.threadCwds.get(message.threadId);
     const input = await this.buildTurnInput(message.prompt, message.attachments, cwd);
+    const promptBytes = Buffer.byteLength(message.prompt, "utf8");
+    await this.recordMobileHandoff({
+      kind: "turn.steer",
+      threadId: message.threadId,
+      turnId,
+      cwd,
+      prompt: message.prompt,
+      promptBytes,
+      attachments: handoffAttachments(message.attachments)
+    });
     this.logger.info("mobile.turn_steer", {
       id: message.id,
       threadId: message.threadId,
       turnId,
-      promptBytes: Buffer.byteLength(message.prompt, "utf8"),
+      promptBytes,
       attachmentCount: Array.isArray(message.attachments) ? message.attachments.length : 0,
       hasCwd: typeof message.cwd === "string"
     });
@@ -604,6 +629,18 @@ export class BridgeServer {
     const sandbox = safeSandbox(message.sandbox);
     const approvalPolicy = safeApprovalPolicy(message.approvalPolicy);
     const config = configFromMobileSettings(message);
+    const role = safeSubagentRole(message.role);
+    const promptBytes = Buffer.byteLength(message.prompt, "utf8");
+    await this.recordMobileHandoff({
+      kind: "subagent.start",
+      threadId: message.threadId,
+      cwd,
+      model: typeof message.model === "string" ? message.model : undefined,
+      role,
+      prompt: message.prompt,
+      promptBytes,
+      attachments: []
+    });
     const forkParams: JsonObject = {
       threadId: message.threadId,
       cwd: typeof cwd === "string" ? cwd : undefined,
@@ -619,7 +656,7 @@ export class BridgeServer {
     this.logger.info("mobile.subagent_start", {
       id: message.id,
       parentThreadId: message.threadId,
-      role: safeSubagentRole(message.role),
+      role,
       hasCwd: typeof cwd === "string",
       hasModel: typeof message.model === "string" && message.model.length > 0,
       sandbox,
@@ -633,7 +670,6 @@ export class BridgeServer {
     }
     this.rememberThreadCwd(forkResult, cwd);
 
-    const role = safeSubagentRole(message.role);
     const input = [{ type: "text", text: subagentPrompt(role, message.prompt), text_elements: [] }];
     const turnParams: JsonObject = {
       threadId: subagentThreadId,
@@ -1241,6 +1277,25 @@ export class BridgeServer {
     const records = this.mobileAuthoredTurnsByThread.get(record.threadId) ?? [];
     records.push(record);
     this.mobileAuthoredTurnsByThread.set(record.threadId, records.slice(-20));
+  }
+
+  private async recordMobileHandoff(entry: NewMobileHandoffEntry): Promise<void> {
+    try {
+      await this.mobileHandoffStore.record(entry);
+      this.logger.info("mobile.handoff_recorded", {
+        kind: entry.kind,
+        threadId: entry.threadId,
+        turnId: entry.turnId ?? null,
+        promptBytes: entry.promptBytes,
+        attachmentCount: entry.attachments.length
+      });
+    } catch (error) {
+      this.logger.warn("mobile.handoff_record_failed", {
+        kind: entry.kind,
+        threadId: entry.threadId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 
   private takeMobileAuthoredTurn(threadId: string, turnId?: string): MobileAuthoredTurn | null {

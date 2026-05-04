@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.3 - 2026-05-05
+
+- Add a private desktop handoff inbox for iPhone-authored prompts so desktop Codex can explicitly recover mobile instructions that were not live-shared into the open desktop conversation.
+- Add `npm run handoff` to print recent mobile handoff entries from the local `0600` inbox.
+- Document that the handoff inbox can contain prompt bodies and must never be committed or shared.
+
 ## 0.6.2 - 2026-05-05
 
 - Fix the macOS Control Center app so it can find Homebrew-installed `node` and `npm` when launched from Xcode or Finder.

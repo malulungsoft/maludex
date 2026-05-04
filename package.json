@@ -1,6 +1,6 @@
 {
   "name": "maludex-bridge",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Local-first iPhone remote bridge for Codex.",
   "license": "Apache-2.0",
   "private": false,
@@ -13,6 +13,7 @@
     "build": "tsc -p tsconfig.json",
     "doctor": "npm run build --silent && node dist/bridge/src/doctor-cli.js",
     "dev": "tsx bridge/src/index.ts",
+    "handoff": "npm run build --silent && node dist/bridge/src/mobile-handoff-cli.js",
     "rotate-token": "npm run build --silent && node dist/bridge/src/rotate-token.js",
     "release:check": "./scripts/release.sh v$(node -p \"require('./package.json').version\") --check-only",
     "test": "vitest run",
