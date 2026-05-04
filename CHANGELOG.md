@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 - 2026-05-04
+
+- Show relative timestamps on transcript bubbles in the iPhone app.
+- Add Swift model coverage for Korean relative message time formatting.
+
 ## 0.4.0 - 2026-05-04
 
 - Add GitHub Actions CI for Node, TypeScript, Swift model tests, Swift transcript tests, and Xcode simulator builds.
