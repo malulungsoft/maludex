@@ -134,6 +134,31 @@ function hugeHistoryTurns() {
   }));
 }
 
+function pagedHistoryTurns() {
+  return Array.from({ length: 8 }, (_, index) => ({
+    id: `paged-turn-${index}`,
+    items: [
+      {
+        type: "userMessage",
+        id: `paged-user-${index}`,
+        content: [{ type: "text", text: `paged user ${index}`, text_elements: [] }]
+      },
+      {
+        type: "agentMessage",
+        id: `paged-assistant-${index}`,
+        text: `paged assistant ${index}`,
+        phase: null,
+        memoryCitation: null
+      }
+    ],
+    status: "completed",
+    error: null,
+    startedAt: index + 1,
+    completedAt: index + 2,
+    durationMs: 1000
+  }));
+}
+
 const rl = createInterface({ input: process.stdin });
 const injectedUserTexts = [];
 const mobileUserTexts = [];
@@ -157,7 +182,12 @@ function injectedHistoryTurns() {
 }
 
 function storedTurns() {
-  const base = process.env.MOCK_CODEX_HUGE_THREAD === "1" ? hugeHistoryTurns() : [historyTurn()];
+  const base =
+    process.env.MOCK_CODEX_PAGED_THREAD === "1"
+      ? pagedHistoryTurns()
+      : process.env.MOCK_CODEX_HUGE_THREAD === "1"
+        ? hugeHistoryTurns()
+        : [historyTurn()];
   if (process.env.MOCK_CODEX_DROP_MOBILE_USER === "1") {
     return [...base, ...injectedHistoryTurns()];
   }
@@ -322,7 +352,10 @@ rl.on("line", (line) => {
       result: {
         thread: thread({
           id: message.params.threadId,
-          turns: storedTurns()
+          preview: "이전에 내가 한 질문",
+          name: "Desktop chat",
+          cwd: process.env.MOCK_CODEX_RECENT_CWD ?? process.cwd(),
+          turns: message.params.includeTurns ? storedTurns() : []
         })
       }
     });
@@ -332,12 +365,20 @@ rl.on("line", (line) => {
   if (message.method === "thread/turns/list") {
     const turns = storedTurns();
     const limit = typeof message.params.limit === "number" ? message.params.limit : turns.length;
+    const offset =
+      typeof message.params.cursor === "string" && message.params.cursor.startsWith("offset:")
+        ? Number(message.params.cursor.slice("offset:".length))
+        : 0;
+    const descending = message.params.sortDirection !== "asc";
+    const orderedTurns = descending ? [...turns].reverse() : turns;
+    const page = orderedTurns.slice(offset, offset + limit);
+    const nextOffset = offset + page.length;
     send({
       id: message.id,
       result: {
-        data: turns.slice(-limit).reverse(),
-        nextCursor: null,
-        backwardsCursor: null
+        data: page,
+        nextCursor: nextOffset < orderedTurns.length ? `offset:${nextOffset}` : null,
+        backwardsCursor: page.length > 0 ? `offset:${Math.max(0, offset - limit)}` : null
       }
     });
     return;

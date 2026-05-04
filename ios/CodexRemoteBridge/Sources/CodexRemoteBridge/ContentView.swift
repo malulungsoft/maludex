@@ -133,6 +133,7 @@ private enum SpeechInputError: LocalizedError {
 
 struct ContentView: View {
     @EnvironmentObject private var bridge: BridgeClient
+    @Environment(\.scenePhase) private var scenePhase
     @State private var pairingText = ""
     @State private var scannerPresented = false
     @State private var attemptedSavedConnect = false
@@ -177,6 +178,11 @@ struct ContentView: View {
                 guard !attemptedSavedConnect else { return }
                 attemptedSavedConnect = true
                 bridge.connectSavedPairingIfAvailable()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    bridge.resumeConnectionIfNeeded()
+                }
             }
         }
     }
@@ -287,6 +293,8 @@ private struct ProjectScreen: View {
     @State private var subagentPresented = false
     @State private var bridgeSwitcherPresented = false
     @State private var controlsExpanded = false
+    @State private var historyAnchorId: TranscriptEntry.ID?
+    @State private var canLoadOlderTranscript = false
     @StateObject private var speech = SpeechInputController()
     @FocusState private var promptFocused: Bool
 
@@ -307,7 +315,16 @@ private struct ProjectScreen: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        TranscriptView(entries: bridge.transcript)
+                        TranscriptView(
+                            entries: bridge.transcript,
+                            hasOlder: bridge.hasOlderTranscript,
+                            isLoadingOlder: bridge.isLoadingOlderTranscript,
+                            loadOlder: {
+                                if canLoadOlderTranscript {
+                                    bridge.loadOlderTranscript()
+                                }
+                            }
+                        )
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
@@ -321,11 +338,29 @@ private struct ProjectScreen: View {
                     }
                 )
                 .onChange(of: bridge.transcript.count) { _, _ in
+                    if let historyAnchorId {
+                        proxy.scrollTo(historyAnchorId, anchor: .top)
+                        self.historyAnchorId = nil
+                        return
+                    }
                     if let last = bridge.transcript.last {
                         withAnimation(.easeOut(duration: 0.2)) {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 300_000_000)
+                            canLoadOlderTranscript = true
+                        }
                     }
+                }
+                .onChange(of: bridge.isLoadingOlderTranscript) { _, isLoading in
+                    if isLoading {
+                        historyAnchorId = bridge.transcript.first?.id
+                    }
+                }
+                .onChange(of: bridge.threadId) { _, _ in
+                    canLoadOlderTranscript = false
+                    historyAnchorId = nil
                 }
             }
         }
@@ -1020,6 +1055,9 @@ private struct SubagentSheet: View {
 
 private struct TranscriptView: View {
     let entries: [TranscriptEntry]
+    let hasOlder: Bool
+    let isLoadingOlder: Bool
+    let loadOlder: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1032,7 +1070,13 @@ private struct TranscriptView: View {
             if entries.isEmpty {
                 EmptyTranscriptView()
             } else {
-                VStack(spacing: 12) {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if hasOlder || isLoadingOlder {
+                        OlderTranscriptLoader(isLoading: isLoadingOlder)
+                            .onAppear {
+                                loadOlder()
+                            }
+                    }
                     ForEach(entries) { entry in
                         TranscriptBubble(entry: entry)
                             .id(entry.id)
@@ -1040,6 +1084,25 @@ private struct TranscriptView: View {
                 }
             }
         }
+    }
+}
+
+private struct OlderTranscriptLoader: View {
+    let isLoading: Bool
+
+    var body: some View {
+        HStack {
+            Spacer()
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Color.clear
+                    .frame(width: 1, height: 1)
+            }
+            Spacer()
+        }
+        .frame(height: isLoading ? 28 : 8)
     }
 }
 

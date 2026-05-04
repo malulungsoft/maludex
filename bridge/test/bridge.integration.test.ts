@@ -735,17 +735,97 @@ test("lists desktop chat threads and opens one with historical transcript", asyn
     method: "thread/list",
     params: { limit: 50, archived: false }
   });
-  expect(report.find((entry) => entry.message.method === "thread/resume")?.message).toMatchObject({
-    method: "thread/resume",
+  expect(report.find((entry) => entry.message.method === "thread/read")?.message).toMatchObject({
+    method: "thread/read",
     params: {
       threadId: "recent-thread-1",
-      approvalPolicy: "on-request",
-      approvalsReviewer: "user",
-      sandbox: "read-only",
-      model: "gpt-5.5",
-      persistExtendedHistory: true
+      includeTurns: false
     }
   });
+  expect(report.find((entry) => entry.message.method === "thread/turns/list")?.message).toMatchObject({
+    method: "thread/turns/list",
+    params: {
+      threadId: "recent-thread-1",
+      limit: 30,
+      sortDirection: "desc"
+    }
+  });
+
+  ws.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("loads older chat transcript pages using cursors", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const reportFile = path.join(temp, "mock-report.jsonl");
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_REPORT_FILE: reportFile,
+      MOCK_CODEX_RECENT_CWD: temp,
+      MOCK_CODEX_PAGED_THREAD: "1"
+    },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const ws = await connect(`ws://${address.host}:${address.port}`, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(
+    JSON.stringify({
+      id: "mobile-chat-open-page",
+      type: "chat.open",
+      threadId: "recent-thread-1",
+      turnLimit: 2
+    })
+  );
+  const opened = await waitForMessage<Record<string, unknown>>(ws, (message) => message.id === "mobile-chat-open-page");
+  const openedResult = opened.result as Record<string, unknown>;
+  expect(openedResult.hasOlderTranscript).toBe(true);
+  expect(openedResult.transcriptCursor).toBe("offset:2");
+  expect(openedResult.transcript).toEqual([
+    expect.objectContaining({ role: "user", text: "paged user 6" }),
+    expect.objectContaining({ role: "assistant", text: "paged assistant 6" }),
+    expect.objectContaining({ role: "user", text: "paged user 7" }),
+    expect.objectContaining({ role: "assistant", text: "paged assistant 7" })
+  ]);
+
+  ws.send(
+    JSON.stringify({
+      id: "mobile-chat-history-page",
+      type: "chat.history",
+      threadId: "recent-thread-1",
+      cursor: openedResult.transcriptCursor,
+      limit: 2
+    })
+  );
+  const history = await waitForMessage<Record<string, unknown>>(ws, (message) => message.id === "mobile-chat-history-page");
+  const historyResult = history.result as Record<string, unknown>;
+  expect(historyResult.hasOlderTranscript).toBe(true);
+  expect(historyResult.transcriptCursor).toBe("offset:4");
+  expect(historyResult.transcript).toEqual([
+    expect.objectContaining({ role: "user", text: "paged user 4" }),
+    expect.objectContaining({ role: "assistant", text: "paged assistant 4" }),
+    expect.objectContaining({ role: "user", text: "paged user 5" }),
+    expect.objectContaining({ role: "assistant", text: "paged assistant 5" })
+  ]);
+
+  const report = await readReport(reportFile);
+  const turnListRequests = report.filter((entry) => entry.message.method === "thread/turns/list").map((entry) => entry.message);
+  expect(turnListRequests).toEqual([
+    expect.objectContaining({ params: expect.objectContaining({ limit: 2, sortDirection: "desc" }) }),
+    expect.objectContaining({ params: expect.objectContaining({ cursor: "offset:2", limit: 2, sortDirection: "desc" }) })
+  ]);
 
   ws.close();
   await rm(temp, { recursive: true, force: true });
@@ -788,11 +868,6 @@ test("opens long desktop chat history without sending oversized thread payloads"
   expect(transcript.length).toBeGreaterThan(0);
   expect(truncation.truncated).toBe(true);
   expect(payloadBytes).toBeLessThan(900_000);
-
-  const started = await waitForMessage<Record<string, unknown>>(ws, (message) => message.type === "codex.event" && message.method === "thread/started");
-  const params = started.params as Record<string, unknown>;
-  const startedThread = params.thread as Record<string, unknown>;
-  expect(startedThread.turns).toBeUndefined();
 
   ws.close();
   await rm(temp, { recursive: true, force: true });

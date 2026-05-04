@@ -54,6 +54,7 @@ const DEFAULT_CHAT_TRANSCRIPT_ENTRY_LIMIT = 120;
 const DEFAULT_CHAT_TRANSCRIPT_BYTE_LIMIT = 768 * 1024;
 const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
+const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
 
 export type BridgeServerOptions = {
   host?: string;
@@ -87,6 +88,7 @@ export class BridgeServer {
   private readonly mobileAuthoredTurnsByThread = new Map<string, MobileAuthoredTurn[]>();
   private readonly pendingApprovals = new Map<string, PendingApproval>();
   private readonly eventBuffer: BufferedEvent[] = [];
+  private readonly resumedThreads = new Set<string>();
   private readonly eventReplayLimit: number;
   private readonly highWatermarkBytes: number;
   private readonly maxQueuedMessages: number;
@@ -250,6 +252,8 @@ export class BridgeServer {
         await this.listChats(ws, message);
       } else if (message.type === "chat.open") {
         await this.openChat(ws, message);
+      } else if (message.type === "chat.history") {
+        await this.loadChatHistory(ws, message);
       } else if (message.type === "ping") {
         this.sendOk(ws, message.id, { pong: true });
       } else {
@@ -288,6 +292,10 @@ export class BridgeServer {
     });
     const result = await this.codex.request("thread/start", asJsonValue(params));
     this.rememberThreadCwd(result, typeof params.cwd === "string" ? params.cwd : undefined);
+    const threadId = threadIdFromThreadResult(result);
+    if (threadId) {
+      this.resumedThreads.add(threadId);
+    }
     this.sendOk(ws, message.id, result);
   }
 
@@ -303,6 +311,7 @@ export class BridgeServer {
     }
 
     const cwd = typeof message.cwd === "string" ? message.cwd : this.threadCwds.get(message.threadId);
+    await this.ensureThreadResumed(message.threadId, message, cwd);
     const input = await this.buildTurnInput(message.prompt, message.attachments, cwd);
     const sandbox = safeSandbox(message.sandbox);
     const params: JsonObject = {
@@ -380,6 +389,7 @@ export class BridgeServer {
     }
 
     const cwd = typeof message.cwd === "string" ? message.cwd : this.threadCwds.get(message.threadId);
+    await this.ensureThreadResumed(message.threadId, message, cwd);
     const sandbox = safeSandbox(message.sandbox);
     const approvalPolicy = safeApprovalPolicy(message.approvalPolicy);
     const config = configFromMobileSettings(message);
@@ -533,40 +543,62 @@ export class BridgeServer {
     if (typeof message.threadId !== "string" || !message.threadId) {
       throw new Error("chat.open requires threadId.");
     }
-    const sandbox = safeSandbox(message.sandbox);
-    const approvalPolicy = safeApprovalPolicy(message.approvalPolicy);
-    const config = configFromMobileSettings(message);
-    const params: JsonObject = {
-      threadId: message.threadId,
-      model: typeof message.model === "string" && message.model ? message.model : undefined,
-      approvalPolicy,
-      approvalsReviewer: "user",
-      sandbox,
-      config: config ? asJsonValue(config) : undefined,
-      persistExtendedHistory: true
-    };
     this.logger.info("mobile.chat_open", {
       id: message.id,
       threadId: message.threadId,
       hasModel: typeof message.model === "string" && message.model.length > 0,
-      sandbox,
-      approvalPolicy,
+      sandbox: safeSandbox(message.sandbox),
+      approvalPolicy: safeApprovalPolicy(message.approvalPolicy),
       reasoningEffort: safeReasoningEffort(message.reasoningEffort) ?? null,
       autoCompact: message.autoCompact === true
     });
-    const result = await this.codex.request("thread/resume", asJsonValue(params));
-    this.rememberThreadCwd(result);
-    const thread = isRecord(result) && isRecord(result.thread) ? result.thread : null;
-    const transcript = thread
-      ? await transcriptFromThread(thread, {
-          entryLimit: boundedInteger(message.transcriptLimit, 1, 500, DEFAULT_CHAT_TRANSCRIPT_ENTRY_LIMIT),
-          byteLimit: boundedInteger(message.transcriptByteLimit, 64 * 1024, 2 * 1024 * 1024, DEFAULT_CHAT_TRANSCRIPT_BYTE_LIMIT)
-        })
-      : emptyTranscriptResult();
+    const thread = await this.readThreadMetadata(message.threadId);
+    if (thread) {
+      this.rememberThreadCwd(asJsonValue({ thread }));
+    }
+    const history = await this.chatHistoryPage(message.threadId, {
+      cursor: undefined,
+      turnLimit: boundedInteger(message.turnLimit, 1, 100, DEFAULT_CHAT_HISTORY_TURN_LIMIT),
+      entryLimit: boundedInteger(message.transcriptLimit, 1, 500, DEFAULT_CHAT_TRANSCRIPT_ENTRY_LIMIT),
+      byteLimit: boundedInteger(message.transcriptByteLimit, 64 * 1024, 2 * 1024 * 1024, DEFAULT_CHAT_TRANSCRIPT_BYTE_LIMIT)
+    });
     this.sendOk(ws, message.id, asJsonValue({
-      ...resumeResultForMobile(result, thread),
-      transcript: transcript.entries,
-      transcriptTruncation: asJsonValue(transcript.truncation)
+      thread: thread ? asJsonValue(threadForMobile(thread)) : undefined,
+      model: typeof message.model === "string" && message.model ? message.model : undefined,
+      cwd: thread && typeof thread.cwd === "string" ? thread.cwd : undefined,
+      transcript: history.entries,
+      transcriptTruncation: asJsonValue(history.truncation),
+      transcriptCursor: history.nextCursor,
+      transcriptBackwardsCursor: history.backwardsCursor,
+      hasOlderTranscript: history.nextCursor !== null
+    }));
+  }
+
+  private async loadChatHistory(
+    ws: WebSocket,
+    message: Extract<MobileMessage, { type: "chat.history" }>
+  ): Promise<void> {
+    if (typeof message.threadId !== "string" || !message.threadId) {
+      throw new Error("chat.history requires threadId.");
+    }
+    const history = await this.chatHistoryPage(message.threadId, {
+      cursor: typeof message.cursor === "string" && message.cursor ? message.cursor : undefined,
+      turnLimit: boundedInteger(message.limit, 1, 100, DEFAULT_CHAT_HISTORY_TURN_LIMIT),
+      entryLimit: DEFAULT_CHAT_TRANSCRIPT_ENTRY_LIMIT,
+      byteLimit: boundedInteger(message.transcriptByteLimit, 64 * 1024, 2 * 1024 * 1024, DEFAULT_CHAT_TRANSCRIPT_BYTE_LIMIT)
+    });
+    this.logger.info("mobile.chat_history", {
+      id: message.id,
+      threadId: message.threadId,
+      returnedEntryCount: history.entries.length,
+      hasOlder: history.nextCursor !== null
+    });
+    this.sendOk(ws, message.id, asJsonValue({
+      transcript: history.entries,
+      transcriptTruncation: asJsonValue(history.truncation),
+      transcriptCursor: history.nextCursor,
+      transcriptBackwardsCursor: history.backwardsCursor,
+      hasOlderTranscript: history.nextCursor !== null
     }));
   }
 
@@ -587,6 +619,9 @@ export class BridgeServer {
       const thread = isRecord(params.thread) ? params.thread : null;
       if (thread && typeof thread.id === "string" && typeof thread.cwd === "string") {
         this.threadCwds.set(thread.id, thread.cwd);
+      }
+      if (thread && typeof thread.id === "string") {
+        this.resumedThreads.add(thread.id);
       }
     }
     if (message.method === "turn/completed" && params) {
@@ -666,6 +701,86 @@ export class BridgeServer {
     if (cwd) {
       this.threadCwds.set(result.thread.id, cwd);
     }
+  }
+
+  private async readThreadMetadata(threadId: string): Promise<Record<string, unknown> | null> {
+    const result = await this.codex.request("thread/read", { threadId, includeTurns: false });
+    return isRecord(result) && isRecord(result.thread) ? result.thread : null;
+  }
+
+  private async ensureThreadResumed(
+    threadId: string,
+    message: {
+      model?: unknown;
+      approvalPolicy?: unknown;
+      sandbox?: unknown;
+      reasoningEffort?: unknown;
+      reasoningSummary?: unknown;
+      verbosity?: unknown;
+      autoCompact?: unknown;
+      autoCompactTokenLimit?: unknown;
+    },
+    cwd?: string
+  ): Promise<void> {
+    if (this.resumedThreads.has(threadId)) {
+      return;
+    }
+
+    const sandbox = safeSandbox(message.sandbox);
+    const approvalPolicy = safeApprovalPolicy(message.approvalPolicy);
+    const config = configFromMobileSettings(message);
+    const params: JsonObject = {
+      threadId,
+      cwd: typeof cwd === "string" ? cwd : undefined,
+      model: typeof message.model === "string" && message.model ? message.model : undefined,
+      approvalPolicy,
+      approvalsReviewer: "user",
+      sandbox,
+      config: config ? asJsonValue(config) : undefined,
+      persistExtendedHistory: true
+    };
+    this.logger.info("mobile.thread_resume_for_turn", {
+      threadId,
+      hasCwd: typeof cwd === "string",
+      hasModel: typeof message.model === "string" && message.model.length > 0,
+      sandbox,
+      approvalPolicy
+    });
+    const result = await this.codex.request("thread/resume", asJsonValue(params));
+    this.rememberThreadCwd(result, cwd);
+    this.resumedThreads.add(threadId);
+  }
+
+  private async chatHistoryPage(
+    threadId: string,
+    options: {
+      cursor?: string;
+      turnLimit: number;
+      entryLimit: number;
+      byteLimit: number;
+    }
+  ): Promise<TranscriptResult & { nextCursor: string | null; backwardsCursor: string | null }> {
+    const result = await this.codex.request(
+      "thread/turns/list",
+      asJsonValue({
+        threadId,
+        cursor: options.cursor,
+        limit: options.turnLimit,
+        sortDirection: "desc"
+      })
+    );
+    const turns = isRecord(result) && Array.isArray(result.data) ? (result.data as unknown[]).filter(isRecord) : [];
+    const transcript = await transcriptFromTurns(
+      turns,
+      threadId,
+      { entryLimit: options.entryLimit, byteLimit: options.byteLimit },
+      true
+    );
+    return {
+      ...transcript,
+      nextCursor: isRecord(result) && typeof result.nextCursor === "string" ? result.nextCursor : null,
+      backwardsCursor: isRecord(result) && typeof result.backwardsCursor === "string" ? result.backwardsCursor : null
+    };
   }
 
   private rememberMobileAuthoredTurn(record: MobileAuthoredTurn): void {
@@ -1154,9 +1269,19 @@ function emptyTranscriptResult(): TranscriptResult {
 async function transcriptFromThread(thread: Record<string, unknown>, options: TranscriptOptions): Promise<TranscriptResult> {
   const threadId = typeof thread.id === "string" ? thread.id : undefined;
   const turns = Array.isArray(thread.turns) ? thread.turns.filter(isRecord) : [];
+  return transcriptFromTurns(turns, threadId, options, false);
+}
+
+async function transcriptFromTurns(
+  turns: Array<Record<string, unknown>>,
+  threadId: string | undefined,
+  options: TranscriptOptions,
+  newestFirst: boolean
+): Promise<TranscriptResult> {
+  const orderedTurns = newestFirst ? [...turns].reverse() : turns;
   const entries: JsonObject[] = [];
   let textTruncatedEntries = 0;
-  for (const turn of turns) {
+  for (const turn of orderedTurns) {
     const turnId = typeof turn.id === "string" ? turn.id : undefined;
     const createdAt = typeof turn.startedAt === "number" ? turn.startedAt : undefined;
     const items = Array.isArray(turn.items) ? turn.items.filter(isRecord) : [];
