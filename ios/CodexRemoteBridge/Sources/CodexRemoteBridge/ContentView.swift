@@ -1553,20 +1553,32 @@ private struct ApprovalCard: View {
     let approval: ApprovalRequest
 
     var body: some View {
+        let isResponding = bridge.isResponding(to: approval)
+
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 Label(approval.title, systemImage: "hand.raised")
                     .font(.headline)
                 Spacer()
-                Text(bridge.copy.pendingTitle)
+                Text(isResponding ? bridge.copy.approvalRespondingTitle : bridge.copy.pendingTitle)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppPalette.warning)
+                    .foregroundStyle(isResponding ? AppPalette.accent : AppPalette.warning)
             }
 
             Text(approval.detail)
                 .font(.footnote.monospaced())
                 .lineLimit(6)
                 .textSelection(.enabled)
+
+            if isResponding {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(bridge.copy.approvalRespondingDetail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             if let cwd = approval.cwd {
                 Text(cwd)
@@ -1583,6 +1595,7 @@ private struct ApprovalCard: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(isResponding)
 
                 Button(role: .destructive) {
                     bridge.deny(approval)
@@ -1591,6 +1604,7 @@ private struct ApprovalCard: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                .disabled(isResponding)
             }
             .controlSize(.large)
         }

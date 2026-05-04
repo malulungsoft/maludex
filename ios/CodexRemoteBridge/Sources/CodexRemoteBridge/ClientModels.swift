@@ -334,6 +334,8 @@ struct AppCopy: Equatable {
     var youLabel: String { text("You", "나") }
     var threadLabel: String { text("Thread", "스레드") }
     var pendingTitle: String { text("Pending", "대기 중") }
+    var approvalRespondingTitle: String { text("Waiting for bridge", "브릿지 확인 대기") }
+    var approvalRespondingDetail: String { text("Your response was sent. Keep this card open until the Mac bridge confirms it.", "응답을 보냈습니다. Mac 브릿지가 확인할 때까지 이 카드를 유지합니다.") }
     var approveTitle: String { text("Approve", "승인") }
     var denyTitle: String { text("Deny", "거부") }
     var queueTitle: String { text("Queue", "대기열") }
@@ -489,7 +491,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.6.9"
+let maludexClientVersion = "0.6.10"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)

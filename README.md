@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.6.9`
+Current version: `v0.6.10`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 

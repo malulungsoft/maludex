@@ -16,6 +16,8 @@ struct ClientModelsTests {
         require(AppLanguage(rawValue: "ko")?.title == "한국어", "Korean language option should be available")
         require(AppCopy(language: .english).settingsTitle == "Settings", "English UI copy should be available")
         require(AppCopy(language: .korean).settingsTitle == "설정", "Korean UI copy should be available")
+        require(AppCopy(language: .english).approvalRespondingTitle == "Waiting for bridge", "approval confirmation copy should be available")
+        require(AppCopy(language: .korean).approvalRespondingTitle == "브릿지 확인 대기", "Korean approval confirmation copy should be available")
         require(AppCopy(languageCode: "bad").settingsTitle == "Settings", "invalid language code should fall back to English")
 
         let queueItem = PromptQueueItem(json: [

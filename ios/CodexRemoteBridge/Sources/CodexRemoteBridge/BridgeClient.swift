@@ -58,6 +58,7 @@ final class BridgeClient: ObservableObject {
     @Published private(set) var events: [BridgeEvent] = []
     @Published private(set) var transcript: [TranscriptEntry] = []
     @Published private(set) var approvals: [ApprovalRequest] = []
+    @Published private(set) var respondingApprovalIds: Set<String> = []
     @Published private(set) var projects: [ProjectOption] = []
     @Published private(set) var projectRoots: [ProjectRootOption] = []
     @Published private(set) var models: [CodexModelOption] = []
@@ -253,7 +254,7 @@ final class BridgeClient: ObservableObject {
         closeSocket(setOffline: true)
         connectionState = .offline
         approvals.removeAll()
-        pendingApprovalResponseIds.removeAll()
+        clearPendingApprovalResponses()
     }
 
     func forgetSavedDeviceState() {
@@ -570,8 +571,12 @@ final class BridgeClient: ObservableObject {
         respond(to: approval, decision: "decline")
     }
 
+    func isResponding(to approval: ApprovalRequest) -> Bool {
+        respondingApprovalIds.contains(approval.id)
+    }
+
     private func respond(to approval: ApprovalRequest, decision: String) {
-        guard !pendingApprovalResponseIds.values.contains(approval.id) else {
+        guard !respondingApprovalIds.contains(approval.id) else {
             appendEvent("approval", "waiting for confirmation")
             return
         }
@@ -591,6 +596,7 @@ final class BridgeClient: ObservableObject {
         }
 
         pendingApprovalResponseIds[requestId] = approval.id
+        respondingApprovalIds.insert(approval.id)
         send(body)
         appendEvent("approval", "sent \(decision)")
     }
@@ -669,7 +675,7 @@ final class BridgeClient: ObservableObject {
         closeSocket(setOffline: false)
         connectionState = .failed
         approvals.removeAll()
-        pendingApprovalResponseIds.removeAll()
+        clearPendingApprovalResponses()
         isLoadingOlderTranscript = false
         appendEvent("bridge", "connection lost: \(error.localizedDescription)")
         if reportError {
@@ -813,7 +819,7 @@ final class BridgeClient: ObservableObject {
             }
             if let id = object["id"]?.stringValue,
                id.hasPrefix("ios-approval") {
-                pendingApprovalResponseIds.removeValue(forKey: id)
+                clearPendingApprovalResponse(requestId: id)
             }
             if let error = object["error"]?.objectValue {
                 lastError = userFacingBridgeError(error)
@@ -860,7 +866,7 @@ final class BridgeClient: ObservableObject {
                 return
             }
             if id.hasPrefix("ios-approval") {
-                if let approvalId = pendingApprovalResponseIds.removeValue(forKey: id) {
+                if let approvalId = clearPendingApprovalResponse(requestId: id) {
                     approvals.removeAll { $0.id == approvalId }
                 }
                 appendEvent("approval", "confirmed")
@@ -1127,7 +1133,7 @@ final class BridgeClient: ObservableObject {
                 }
             }
             approvals.removeAll()
-            pendingApprovalResponseIds.removeAll()
+            clearPendingApprovalResponses()
         }
 
         if method == "thread/compacted" {
@@ -1170,10 +1176,31 @@ final class BridgeClient: ObservableObject {
             return
         }
         approvals.removeAll { $0.id == approvalId }
-        pendingApprovalResponseIds = pendingApprovalResponseIds.filter { $0.value != approvalId }
+        clearPendingApprovalResponses(for: approvalId)
         let decision = object["decision"]?.stringValue ?? "resolved"
         let reason = object["reason"]?.stringValue
         appendEvent("approval", reason == nil ? decision : "\(decision) · \(reason!)")
+    }
+
+    @discardableResult
+    private func clearPendingApprovalResponse(requestId: String) -> String? {
+        guard let approvalId = pendingApprovalResponseIds.removeValue(forKey: requestId) else {
+            return nil
+        }
+        if !pendingApprovalResponseIds.values.contains(approvalId) {
+            respondingApprovalIds.remove(approvalId)
+        }
+        return approvalId
+    }
+
+    private func clearPendingApprovalResponses(for approvalId: String) {
+        pendingApprovalResponseIds = pendingApprovalResponseIds.filter { $0.value != approvalId }
+        respondingApprovalIds.remove(approvalId)
+    }
+
+    private func clearPendingApprovalResponses() {
+        pendingApprovalResponseIds.removeAll()
+        respondingApprovalIds.removeAll()
     }
 
     private func setActiveThread(_ id: String) {

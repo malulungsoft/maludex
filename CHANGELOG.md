@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.10 - 2026-05-05
+
+- Show an explicit iPhone approval "waiting for bridge" state after Approve or Deny is tapped.
+- Disable approval action buttons while the bridge is confirming the response, preventing accidental duplicate approval sends.
+- Clear the waiting state consistently on success, failure, disconnect, turn completion, or bridge-side approval resolution.
+
 ## 0.6.9 - 2026-05-05
 
 - Keep iPhone approval cards visible until the bridge confirms the approval response, instead of hiding them immediately on tap, and suppress duplicate approval taps while confirmation is pending.
