@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { appendFile, chmod, mkdir, readFile, stat } from "node:fs/promises";
+import { appendFile, chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { MobileAttachment, SubagentRole } from "./types.js";
 
@@ -30,8 +30,13 @@ export type MobileHandoffEntry = {
 
 export type NewMobileHandoffEntry = Omit<MobileHandoffEntry, "schemaVersion" | "id" | "createdAt" | "source">;
 
+const DEFAULT_MAX_HANDOFF_ENTRIES = 200;
+
 export class MobileHandoffStore {
-  constructor(private readonly file: string) {}
+  constructor(
+    private readonly file: string,
+    private readonly maxEntries = DEFAULT_MAX_HANDOFF_ENTRIES
+  ) {}
 
   async record(entry: NewMobileHandoffEntry): Promise<MobileHandoffEntry> {
     await mkdir(path.dirname(this.file), { recursive: true, mode: 0o700 });
@@ -44,11 +49,29 @@ export class MobileHandoffStore {
     };
     await appendFile(this.file, `${JSON.stringify(persisted)}\n`, { mode: 0o600 });
     await chmod(this.file, 0o600);
+    await this.prune();
     return persisted;
+  }
+
+  private async prune(): Promise<void> {
+    const maxEntries = Math.max(1, Math.min(this.maxEntries, 1_000));
+    const entries = await readAllMobileHandoffEntries(this.file);
+    if (entries.length <= maxEntries) {
+      return;
+    }
+
+    const retained = entries.slice(-maxEntries);
+    await writeFile(this.file, `${retained.map((entry) => JSON.stringify(entry)).join("\n")}\n`, { mode: 0o600 });
+    await chmod(this.file, 0o600);
   }
 }
 
 export async function readMobileHandoffEntries(file: string, limit = 20): Promise<MobileHandoffEntry[]> {
+  const entries = await readAllMobileHandoffEntries(file);
+  return entries.slice(-Math.max(1, Math.min(limit, 200))).reverse();
+}
+
+async function readAllMobileHandoffEntries(file: string): Promise<MobileHandoffEntry[]> {
   let stats;
   try {
     stats = await stat(file);
@@ -71,9 +94,7 @@ export async function readMobileHandoffEntries(file: string, limit = 20): Promis
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as MobileHandoffEntry)
-    .slice(-Math.max(1, Math.min(limit, 200)))
-    .reverse();
+    .map((line) => JSON.parse(line) as MobileHandoffEntry);
 }
 
 export function handoffAttachments(attachments: MobileAttachment[] | undefined): MobileHandoffAttachment[] {

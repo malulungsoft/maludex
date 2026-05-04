@@ -32,7 +32,7 @@ There is no cloud relay in this MVP.
 | Token file readable by other users | Bridge refuses token files whose permissions are not exactly `0600`. |
 | Token visible in bridge logs | The QR URI is rendered as a QR code; raw token text is not printed by the CLI logger. |
 | Prompt leakage through logs | Bridge logs metadata and prompt byte length only. |
-| Desktop handoff inbox leaks prompt bodies | The handoff inbox is separate from bridge logs, stored outside the repo at `~/.codex-iphone-remote-bridge/mobile-handoff.jsonl`, and forced to `0600`; docs warn not to commit or share it. |
+| Desktop handoff inbox leaks prompt bodies | The handoff inbox is separate from bridge logs, stored outside the repo at `~/.codex-iphone-remote-bridge/mobile-handoff.jsonl`, forced to `0600`, and pruned to the most recent 200 entries by default; docs warn not to commit or share it. |
 | Remote command execution without review | Threads and turns default to `on-request`; approvals are forwarded to the phone. |
 | Excessive filesystem access | Thread default sandbox is `read-only`; workspace-write must be requested explicitly. Mobile clients cannot request `danger-full-access`. |
 | Accidental no-approval mode | The bridge rejects mobile attempts to use `approvalPolicy: "never"` and falls back to `on-request`. |

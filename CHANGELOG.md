@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.13 - 2026-05-05
+
+- Prune the private desktop mobile-handoff inbox to the most recent 200 entries by default.
+- Keep handoff retention files at `0600` after pruning so prompt bodies remain private local state.
+- Add regression coverage for handoff retention ordering and permissions.
+
 ## 0.6.12 - 2026-05-05
 
 - Show the iOS local notification authorization status in the in-app Diagnostics screen.

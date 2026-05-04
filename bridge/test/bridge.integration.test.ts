@@ -8,6 +8,7 @@ import { afterEach, expect, test } from "vitest";
 
 import { BridgeServer } from "../src/bridge-server.js";
 import { createLogger } from "../src/logger.js";
+import { MobileHandoffStore, readMobileHandoffEntries } from "../src/mobile-handoff-store.js";
 import { QueuedWebSocketSender } from "../src/queued-websocket-sender.js";
 import { rotateCapabilityTokenFile } from "../src/auth.js";
 
@@ -214,7 +215,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.6.12",
+      bridgeVersion: "0.6.13",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -315,7 +316,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.6.12"
+    bridgeVersion: "0.6.13"
   });
 
   ws.send(
@@ -1488,6 +1489,32 @@ test("writes iPhone-authored prompts to a private desktop handoff inbox", async 
   expect(JSON.stringify(entry)).not.toContain("dataBase64");
 
   ws.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("prunes the private desktop handoff inbox to the configured retention limit", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const mobileHandoffFile = path.join(temp, "mobile-handoff.jsonl");
+  const store = new MobileHandoffStore(mobileHandoffFile, 3);
+
+  for (let index = 0; index < 5; index += 1) {
+    await store.record({
+      kind: "turn.start",
+      threadId: `thread-${index}`,
+      prompt: `prompt-${index}`,
+      promptBytes: Buffer.byteLength(`prompt-${index}`),
+      attachments: []
+    });
+  }
+
+  const handoffStat = await stat(mobileHandoffFile);
+  const handoffLines = (await readFile(mobileHandoffFile, "utf8")).trim().split("\n");
+  const recent = await readMobileHandoffEntries(mobileHandoffFile, 10);
+
+  expect((handoffStat.mode & 0o777).toString(8)).toBe("600");
+  expect(handoffLines).toHaveLength(3);
+  expect(recent.map((entry) => entry.prompt)).toEqual(["prompt-4", "prompt-3", "prompt-2"]);
+
   await rm(temp, { recursive: true, force: true });
 });
 

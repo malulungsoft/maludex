@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.6.12`
+Current version: `v0.6.13`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 
@@ -62,7 +62,7 @@ A short tour captured from the real SwiftUI app running in iOS Simulator is embe
 - The mobile app can request only `read-only` or `workspace-write`; it does not expose `danger-full-access` or `approvalPolicy: "never"`.
 - Prompt bodies are sent to Codex but are not logged by the bridge by default.
 - Queued mobile prompts are persisted locally so they can resume after a bridge restart. That queue file can contain prompt bodies and attachment references; keep it private, keep its `0600` permissions, and never commit or share it.
-- iPhone-authored prompts are also copied into `~/.codex-iphone-remote-bridge/mobile-handoff.jsonl` with `0600` permissions so a desktop Codex session can explicitly recover what was sent from mobile. This is not a log stream, but it can contain prompt bodies; treat it as private and never commit or share it.
+- iPhone-authored prompts are also copied into `~/.codex-iphone-remote-bridge/mobile-handoff.jsonl` with `0600` permissions so a desktop Codex session can explicitly recover what was sent from mobile. This is not a log stream, but it can contain prompt bodies; treat it as private and never commit or share it. The bridge keeps only the most recent 200 handoff entries by default.
 - Mobile attachments are copied into the selected workspace under `.codex-mobile-attachments/` with `0600` file permissions. Treat those files as local project data.
 - A paired and unlocked iPhone should be treated as a trusted device. It can view recent transcript content and respond to approval requests.
 - Approval requests are kept pending for mobile reconnects, but v1 has no APNs/cloud push relay. Background notifications are local iOS notifications and can only fire when the app is still able to receive or reconnect to the bridge before the approval timeout. If an approval card is already visible and you background the app, maludex re-schedules a local reminder for that pending approval.
