@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.11 - 2026-05-05
+
+- Re-schedule local iOS approval reminders when maludex is sent to the background while approval cards are still pending.
+- Skip duplicate reminder scheduling for approvals that already have a response waiting for bridge confirmation.
+- Document the local-only background notification behavior and its APNs-free limitations.
+
 ## 0.6.10 - 2026-05-05
 
 - Show an explicit iPhone approval "waiting for bridge" state after Approve or Deny is tapped.

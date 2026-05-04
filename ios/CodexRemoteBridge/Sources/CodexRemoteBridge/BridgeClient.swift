@@ -176,6 +176,9 @@ final class BridgeClient: ObservableObject {
 
     func setAppIsActive(_ isActive: Bool) {
         appIsActive = isActive
+        if !isActive {
+            schedulePendingApprovalNotifications()
+        }
     }
 
     func connect(pairing: Pairing) {
@@ -1241,6 +1244,12 @@ final class BridgeClient: ObservableObject {
             return
         }
         notificationScheduler.schedule(intent)
+    }
+
+    private func schedulePendingApprovalNotifications() {
+        for approval in approvals where !respondingApprovalIds.contains(approval.id) {
+            scheduleNotification(type: "approval.requested", method: approval.method, params: approval.params, approvalId: approval.id)
+        }
     }
 
     private func nextMessageId(prefix: String = "ios") -> String {
