@@ -191,6 +191,18 @@ struct ClientModelsTests {
             mobileNotificationIntent(type: "codex.event", method: "item/agentMessage/delta", params: [:], approvalId: nil) == nil,
             "streaming deltas should not create local notifications"
         )
+        require(
+            shouldScheduleMobileNotification(type: "approval.requested", appIsActive: false),
+            "approval notifications should be scheduled while the app is backgrounded"
+        )
+        require(
+            !shouldScheduleMobileNotification(type: "approval.requested", appIsActive: true),
+            "approval notifications should not be scheduled while the approval card is already visible"
+        )
+        require(
+            shouldScheduleMobileNotification(type: "codex.event", appIsActive: true),
+            "non-approval notifications should preserve existing scheduling behavior"
+        )
 
         let diagnostics = BridgeDiagnostics(json: [
             "bridgeVersion": .string("0.4.3"),

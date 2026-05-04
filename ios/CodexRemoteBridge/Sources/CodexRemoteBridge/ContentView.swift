@@ -175,11 +175,13 @@ struct ContentView: View {
                 .ignoresSafeArea()
             }
             .onAppear {
+                bridge.setAppIsActive(scenePhase == .active)
                 guard !attemptedSavedConnect else { return }
                 attemptedSavedConnect = true
                 bridge.connectSavedPairingIfAvailable()
             }
             .onChange(of: scenePhase) { _, phase in
+                bridge.setAppIsActive(phase == .active)
                 if phase == .active {
                     bridge.resumeConnectionIfNeeded()
                 }

@@ -19,9 +19,9 @@ public struct DoctorRunner {
 
     public func run(_ action: ControlCenterAction = .status) async throws -> DoctorReport {
         try await ensureDoctorBuild()
-        let output = try await runProcess(
-            executable: "/usr/bin/env",
-            arguments: ["node", "dist/bridge/src/doctor-cli.js"] + arguments(for: action),
+        let output = try await runTool(
+            command: "node",
+            arguments: ["dist/bridge/src/doctor-cli.js"] + arguments(for: action),
             currentDirectory: repoRoot
         )
         return try JSONDecoder().decode(DoctorReport.self, from: Data(output.utf8))
@@ -36,9 +36,9 @@ public struct DoctorRunner {
         if FileManager.default.fileExists(atPath: doctorCli.path) {
             return
         }
-        _ = try await runProcess(
-            executable: "/usr/bin/env",
-            arguments: ["npm", "run", "build", "--silent"],
+        _ = try await runTool(
+            command: "npm",
+            arguments: ["run", "build", "--silent"],
             currentDirectory: repoRoot
         )
     }
@@ -89,6 +89,19 @@ public struct DoctorRunner {
             return output
         }.value
     }
+
+    private func runTool(
+        command: String,
+        arguments: [String],
+        currentDirectory: URL
+    ) async throws -> String {
+        let tool = ToolExecutableResolver.resolve(command: command)
+        return try await runProcess(
+            executable: tool.executable,
+            arguments: tool.argumentsPrefix + arguments,
+            currentDirectory: currentDirectory
+        )
+    }
 }
 
 public struct DoctorRunnerError: Error, LocalizedError {
@@ -99,5 +112,54 @@ public struct DoctorRunnerError: Error, LocalizedError {
     public var errorDescription: String? {
         let detail = error.isEmpty ? output : error
         return detail.isEmpty ? "Command failed: \(command)" : detail
+    }
+}
+
+struct ToolExecutable: Equatable {
+    let executable: String
+    let argumentsPrefix: [String]
+}
+
+enum ToolExecutableResolver {
+    static func resolve(
+        command: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileExists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
+    ) -> ToolExecutable {
+        let overrideKey = "MALUDEX_\(command.uppercased())_PATH"
+        if let override = environment[overrideKey], fileExists(override) {
+            return ToolExecutable(executable: override, argumentsPrefix: [])
+        }
+
+        for directory in pathDirectories(from: environment["PATH"]) {
+            let candidate = "\(directory)/\(command)"
+            if fileExists(candidate) {
+                return ToolExecutable(executable: candidate, argumentsPrefix: [])
+            }
+        }
+
+        for candidate in defaultCandidatePaths(for: command) where fileExists(candidate) {
+            return ToolExecutable(executable: candidate, argumentsPrefix: [])
+        }
+
+        return ToolExecutable(executable: "/usr/bin/env", argumentsPrefix: [command])
+    }
+
+    private static func pathDirectories(from pathValue: String?) -> [String] {
+        pathValue?
+            .split(separator: ":")
+            .map(String.init)
+            .filter { !$0.isEmpty } ?? []
+    }
+
+    private static func defaultCandidatePaths(for command: String) -> [String] {
+        [
+            "/opt/homebrew/bin/\(command)",
+            "/usr/local/bin/\(command)",
+            "/opt/local/bin/\(command)",
+            "/sw/bin/\(command)",
+            "/usr/bin/\(command)",
+            "/bin/\(command)"
+        ]
     }
 }

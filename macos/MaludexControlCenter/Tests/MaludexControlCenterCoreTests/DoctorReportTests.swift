@@ -80,4 +80,37 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertTrue(report.repairable)
         XCTAssertEqual(report.issues.first?.code, "launch_agent_repo_mismatch")
     }
+
+    func testToolResolverFindsHomebrewNodeWhenAppPathDoesNotContainIt() {
+        let resolved = ToolExecutableResolver.resolve(
+            command: "node",
+            environment: ["PATH": "/usr/bin:/bin"],
+            fileExists: { $0 == "/opt/homebrew/bin/node" }
+        )
+
+        XCTAssertEqual(resolved.executable, "/opt/homebrew/bin/node")
+        XCTAssertEqual(resolved.argumentsPrefix, [])
+    }
+
+    func testToolResolverFallsBackToEnvWhenNoKnownPathExists() {
+        let resolved = ToolExecutableResolver.resolve(
+            command: "node",
+            environment: ["PATH": "/usr/bin:/bin"],
+            fileExists: { _ in false }
+        )
+
+        XCTAssertEqual(resolved.executable, "/usr/bin/env")
+        XCTAssertEqual(resolved.argumentsPrefix, ["node"])
+    }
+
+    func testToolResolverPrefersExplicitOverride() {
+        let resolved = ToolExecutableResolver.resolve(
+            command: "npm",
+            environment: ["MALUDEX_NPM_PATH": "/custom/bin/npm", "PATH": "/usr/bin:/bin"],
+            fileExists: { $0 == "/custom/bin/npm" || $0 == "/opt/homebrew/bin/npm" }
+        )
+
+        XCTAssertEqual(resolved.executable, "/custom/bin/npm")
+        XCTAssertEqual(resolved.argumentsPrefix, [])
+    }
 }

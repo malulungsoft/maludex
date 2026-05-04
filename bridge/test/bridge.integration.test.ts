@@ -151,15 +151,15 @@ test("rotating the token file invalidates old websocket credentials without rest
   const ws = await connect(wsUrl, token);
   await waitForMessage(ws, (message) => message.type === "bridge.ready");
 
-  const rotated = await rotateCapabilityTokenFile(tokenFile);
-  expect(rotated).not.toBe(token);
-  await expect(connect(wsUrl, token)).rejects.toThrow(/unexpected response 401/);
-
   const closed = new Promise<{ code: number; reason: string }>((resolve) => {
     ws.once("close", (code, reason) => {
       resolve({ code, reason: reason.toString() });
     });
   });
+  const rotated = await rotateCapabilityTokenFile(tokenFile);
+  expect(rotated).not.toBe(token);
+  await expect(connect(wsUrl, token)).rejects.toThrow(/unexpected response 401/);
+
   const newWs = await connect(wsUrl, rotated);
   await waitForMessage(newWs, (message) => message.type === "bridge.ready");
   await expect(closed).resolves.toMatchObject({ code: 4001 });
@@ -197,7 +197,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.6.1",
+      bridgeVersion: "0.6.2",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -298,7 +298,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.6.1"
+    bridgeVersion: "0.6.2"
   });
 
   ws.send(

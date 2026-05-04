@@ -285,7 +285,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.6.1"
+let maludexClientVersion = "0.6.2"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
@@ -390,6 +390,13 @@ func mobileNotificationIntent(
     default:
         return nil
     }
+}
+
+func shouldScheduleMobileNotification(type: String, appIsActive: Bool) -> Bool {
+    if type == "approval.requested" {
+        return !appIsActive
+    }
+    return true
 }
 
 private func approvalTitle(for method: String?) -> String {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2 - 2026-05-05
+
+- Fix the macOS Control Center app so it can find Homebrew-installed `node` and `npm` when launched from Xcode or Finder.
+- Notify the iPhone user when a Codex approval request arrives while maludex is inactive or backgrounded.
+- Keep foreground approval requests in the in-app approval card without also creating a local notification.
+
 ## 0.6.1 - 2026-05-05
 
 - Compact the iPhone chat header and prompt composer so more transcript content is visible on large phones.

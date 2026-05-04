@@ -152,12 +152,17 @@ final class BridgeClient: ObservableObject {
     private let stateStore: DeviceStateStore
     private let notificationScheduler = LocalNotificationScheduler()
     private var suppressPersistence = false
+    private var appIsActive = true
 
     init(stateStore: DeviceStateStore = DeviceStateStore()) {
         self.stateStore = stateStore
         restorePersistedState()
         refreshSavedPairingState()
         notificationScheduler.requestAuthorizationIfNeeded()
+    }
+
+    func setAppIsActive(_ isActive: Bool) {
+        appIsActive = isActive
     }
 
     func connect(pairing: Pairing) {
@@ -1153,6 +1158,9 @@ final class BridgeClient: ObservableObject {
     }
 
     private func scheduleNotification(type: String, method: String?, params: [String: JSONValue], approvalId: String?) {
+        guard shouldScheduleMobileNotification(type: type, appIsActive: appIsActive) else {
+            return
+        }
         guard let intent = mobileNotificationIntent(type: type, method: method, params: params, approvalId: approvalId) else {
             return
         }
