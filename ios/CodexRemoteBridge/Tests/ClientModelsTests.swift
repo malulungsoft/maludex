@@ -22,6 +22,7 @@ struct ClientModelsTests {
         require(AppCopy(language: .korean).notificationStatusTitle("denied") == "거부됨", "Korean notification status copy should be available")
         require(AppCopy(language: .english).openAppSettingsTitle == "Open iPhone Settings", "notification settings recovery copy should be available")
         require(AppCopy(language: .korean).notificationsBlockedTitle == "알림이 차단됨", "Korean notification recovery copy should be available")
+        require(AppCopy(language: .english).mobileHandoffRetentionTitle == "Mobile handoff retention", "handoff retention copy should be available")
         require(AppCopy(languageCode: "bad").settingsTitle == "Settings", "invalid language code should fall back to English")
 
         let queueItem = PromptQueueItem(json: [
@@ -233,6 +234,7 @@ struct ClientModelsTests {
                 ])
             ]),
             "pendingApprovalCount": .number(0),
+            "mobileHandoffMaxEntries": .number(50),
             "pendingApprovals": .array([
                 .object([
                     "approvalId": .string("approval-1"),
@@ -246,7 +248,9 @@ struct ClientModelsTests {
         require(diagnostics?.endpoint == "wss://maludex.example.com:443", "diagnostics should expose endpoint")
         require(diagnostics?.activeTurns.first?.threadId == "thread-1", "diagnostics should decode active turn details")
         require(diagnostics?.pendingApprovals.first?.approvalId == "approval-1", "diagnostics should decode pending approval details")
+        require(diagnostics?.mobileHandoffMaxEntries == 50, "diagnostics should decode handoff retention metadata")
         require(diagnostics?.diagnosticReport.contains("token") == false, "diagnostics report should not include bearer token material")
+        require(diagnostics?.diagnosticReport.contains("mobileHandoffMaxEntries: 50") == true, "diagnostics report should include handoff retention metadata")
         require(diagnostics?.diagnosticReport.contains("thread-1") == true, "diagnostics report should include safe thread metadata")
         require(diagnostics?.diagnosticReport.contains("bridgeVersion: 0.4.3") == true, "diagnostics report should be copyable")
 

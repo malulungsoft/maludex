@@ -30,7 +30,12 @@ export type MobileHandoffEntry = {
 
 export type NewMobileHandoffEntry = Omit<MobileHandoffEntry, "schemaVersion" | "id" | "createdAt" | "source">;
 
-const DEFAULT_MAX_HANDOFF_ENTRIES = 200;
+export const DEFAULT_MAX_HANDOFF_ENTRIES = 200;
+
+export function boundedMobileHandoffMaxEntries(maxEntries = DEFAULT_MAX_HANDOFF_ENTRIES): number {
+  const normalized = Number.isFinite(maxEntries) ? Math.trunc(maxEntries) : DEFAULT_MAX_HANDOFF_ENTRIES;
+  return Math.max(1, Math.min(normalized, 1_000));
+}
 
 export class MobileHandoffStore {
   constructor(
@@ -54,7 +59,7 @@ export class MobileHandoffStore {
   }
 
   private async prune(): Promise<void> {
-    const maxEntries = Math.max(1, Math.min(this.maxEntries, 1_000));
+    const maxEntries = boundedMobileHandoffMaxEntries(this.maxEntries);
     const entries = await readAllMobileHandoffEntries(this.file);
     if (entries.length <= maxEntries) {
       return;

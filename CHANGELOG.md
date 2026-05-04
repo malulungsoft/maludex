@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.18 - 2026-05-05
+
+- Include the effective mobile handoff retention count in token-free `bridge.status` diagnostics.
+- Show mobile handoff retention in the iPhone Diagnostics screen and copied diagnostics report.
+- Share the handoff retention bounding helper between the bridge server and handoff store.
+
 ## 0.6.17 - 2026-05-05
 
 - Add `BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES` and `--mobile-handoff-max-entries` to tune how many iPhone-authored handoff prompts are retained.

@@ -996,6 +996,7 @@ private struct DiagnosticsSheet: View {
                         DiagnosticRow(title: bridge.copy.activeTurnsTitle, value: "\(diagnostics.activeTurnCount)")
                         DiagnosticRow(title: bridge.copy.pendingApprovalsTitle, value: "\(diagnostics.pendingApprovalCount)")
                         DiagnosticRow(title: bridge.copy.eventBufferTitle, value: "\(diagnostics.eventBufferSize)/\(diagnostics.eventReplayLimit)")
+                        DiagnosticRow(title: bridge.copy.mobileHandoffRetentionTitle, value: "\(diagnostics.mobileHandoffMaxEntries)")
                         DiagnosticRow(title: bridge.copy.projectRootsTitle, value: "\(diagnostics.projectRootCount)")
                         DiagnosticRow(title: bridge.copy.uptimeTitle, value: durationText(diagnostics.uptimeSeconds))
                     }

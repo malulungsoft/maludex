@@ -8,7 +8,12 @@ import WebSocket, { WebSocketServer } from "ws";
 import { CapabilityAuthenticator, loadCapabilityTokenFromFile } from "./auth.js";
 import { CodexRpcClient } from "./codex-rpc.js";
 import { createLogger, type Logger } from "./logger.js";
-import { MobileHandoffStore, handoffAttachments, type NewMobileHandoffEntry } from "./mobile-handoff-store.js";
+import {
+  MobileHandoffStore,
+  boundedMobileHandoffMaxEntries,
+  handoffAttachments,
+  type NewMobileHandoffEntry
+} from "./mobile-handoff-store.js";
 import { QueuedWebSocketSender } from "./queued-websocket-sender.js";
 import {
   asJsonValue,
@@ -71,7 +76,7 @@ const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
 const MAX_PROMPT_QUEUE_ITEMS = 50;
-const BRIDGE_VERSION = "0.6.17";
+const BRIDGE_VERSION = "0.6.18";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
@@ -125,6 +130,7 @@ export class BridgeServer {
   private readonly maxAttachmentsPerTurn: number;
   private readonly promptQueueFile: string;
   private readonly mobileHandoffStore: MobileHandoffStore;
+  private readonly mobileHandoffMaxEntries: number;
   private readonly approvalRequestTimeoutMs: number;
   private nextEventId = 1;
   private nextPromptQueueId = 1;
@@ -145,9 +151,10 @@ export class BridgeServer {
     this.maxAttachmentBytes = options.maxAttachmentBytes ?? 15 * 1024 * 1024;
     this.maxAttachmentsPerTurn = options.maxAttachmentsPerTurn ?? 5;
     this.promptQueueFile = options.promptQueueFile ?? path.join(path.dirname(options.tokenFile), "prompt-queue.json");
+    this.mobileHandoffMaxEntries = boundedMobileHandoffMaxEntries(options.mobileHandoffMaxEntries);
     this.mobileHandoffStore = new MobileHandoffStore(
       options.mobileHandoffFile ?? path.join(path.dirname(options.tokenFile), "mobile-handoff.jsonl"),
-      options.mobileHandoffMaxEntries
+      this.mobileHandoffMaxEntries
     );
     this.codex = new CodexRpcClient({
       command: options.codexCommand,
@@ -879,6 +886,7 @@ export class BridgeServer {
       eventReplayLimit: this.eventReplayLimit,
       activeTurnCount: this.activeTurns.size,
       promptQueueCount: this.promptQueueCount(),
+      mobileHandoffMaxEntries: this.mobileHandoffMaxEntries,
       pendingApprovalCount: this.pendingApprovals.size,
       activeTurns: [...this.activeTurns.entries()].map(([threadId, turnId]) => ({ threadId, turnId })),
       promptQueue: this.publicPromptQueue(),

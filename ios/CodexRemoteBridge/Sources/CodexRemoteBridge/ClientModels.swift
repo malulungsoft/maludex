@@ -372,6 +372,7 @@ struct AppCopy: Equatable {
     var activeTurnsTitle: String { text("Active turns", "진행 중 작업") }
     var pendingApprovalsTitle: String { text("Pending approvals", "대기 중 승인") }
     var eventBufferTitle: String { text("Event buffer", "이벤트 버퍼") }
+    var mobileHandoffRetentionTitle: String { text("Mobile handoff retention", "모바일 핸드오프 보관") }
     var projectRootsTitle: String { text("Project roots", "프로젝트 루트") }
     var uptimeTitle: String { text("Uptime", "가동 시간") }
     var reportTitle: String { text("Report", "리포트") }
@@ -512,7 +513,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.6.17"
+let maludexClientVersion = "0.6.18"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
@@ -716,6 +717,7 @@ struct BridgeDiagnostics: Equatable {
     let activeTurns: [ActiveTurn]
     let pendingApprovalCount: Int
     let pendingApprovals: [PendingApproval]
+    let mobileHandoffMaxEntries: Int
     let projectRootCount: Int
     let resumedThreadCount: Int
     let uptimeSeconds: Int
@@ -752,6 +754,7 @@ struct BridgeDiagnostics: Equatable {
             guard let object = value.objectValue else { return nil }
             return PendingApproval(json: object)
         } ?? []
+        self.mobileHandoffMaxEntries = json["mobileHandoffMaxEntries"]?.intValue ?? 200
         self.projectRootCount = json["projectRootCount"]?.intValue ?? 0
         self.resumedThreadCount = json["resumedThreadCount"]?.intValue ?? 0
         self.uptimeSeconds = json["uptimeSeconds"]?.intValue ?? 0
@@ -774,6 +777,7 @@ struct BridgeDiagnostics: Equatable {
             "activeTurns: \(activeTurns.map { "\($0.threadId)/\($0.turnId)" }.joined(separator: ", "))",
             "pendingApprovalCount: \(pendingApprovalCount)",
             "pendingApprovals: \(pendingApprovals.map { "\($0.approvalId)/\($0.method)" }.joined(separator: ", "))",
+            "mobileHandoffMaxEntries: \(mobileHandoffMaxEntries)",
             "projectRootCount: \(projectRootCount)",
             "resumedThreadCount: \(resumedThreadCount)",
             "uptimeSeconds: \(uptimeSeconds)"
