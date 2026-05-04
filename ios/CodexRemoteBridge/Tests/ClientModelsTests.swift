@@ -13,6 +13,19 @@ struct ClientModelsTests {
         require(project?.name == "App", "project name should decode")
         require(project?.source == "recent", "project source should decode")
 
+        let queueItem = PromptQueueItem(json: [
+            "id": .string("queue-1"),
+            "threadId": .string("thread-1"),
+            "promptPreview": .string("긴 작업을 먼저 준비해줘"),
+            "promptBytes": .number(42),
+            "attachmentCount": .number(2),
+            "createdAt": .string("2026-05-04T14:37:10.000Z")
+        ])
+        require(queueItem?.id == "queue-1", "queued prompt id should decode")
+        require(queueItem?.threadId == "thread-1", "queued prompt thread should decode")
+        require(queueItem?.promptPreview == "긴 작업을 먼저 준비해줘", "queued prompt preview should decode")
+        require(queueItem?.attachmentCount == 2, "queued prompt attachment count should decode")
+
         let model = CodexModelOption(json: [
             "model": .string("gpt-5.5"),
             "displayName": .string("GPT-5.5"),
@@ -145,7 +158,7 @@ struct ClientModelsTests {
             "offline connection errors should explain bridge reachability"
         )
         let diagnostics = BridgeDiagnostics(json: [
-            "bridgeVersion": .string("0.4.2"),
+            "bridgeVersion": .string("0.4.3"),
             "protocolVersion": .number(1),
             "host": .string("maludex.example.com"),
             "port": .number(443),
@@ -171,13 +184,13 @@ struct ClientModelsTests {
             "projectRootCount": .number(2),
             "uptimeSeconds": .number(42)
         ])
-        require(diagnostics?.bridgeVersion == "0.4.2", "diagnostics should decode bridge version")
+        require(diagnostics?.bridgeVersion == "0.4.3", "diagnostics should decode bridge version")
         require(diagnostics?.endpoint == "wss://maludex.example.com:443", "diagnostics should expose endpoint")
         require(diagnostics?.activeTurns.first?.threadId == "thread-1", "diagnostics should decode active turn details")
         require(diagnostics?.pendingApprovals.first?.approvalId == "approval-1", "diagnostics should decode pending approval details")
         require(diagnostics?.diagnosticReport.contains("token") == false, "diagnostics report should not include bearer token material")
         require(diagnostics?.diagnosticReport.contains("thread-1") == true, "diagnostics report should include safe thread metadata")
-        require(diagnostics?.diagnosticReport.contains("bridgeVersion: 0.4.2") == true, "diagnostics report should be copyable")
+        require(diagnostics?.diagnosticReport.contains("bridgeVersion: 0.4.3") == true, "diagnostics report should be copyable")
 
         let preferences = MemoryPreferencesStore()
         let secrets = MemorySecretStore()

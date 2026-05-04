@@ -50,12 +50,25 @@ type MobileAuthoredTurn = {
   input: JsonValue[];
 };
 
+type QueuedPromptTurn = {
+  id: string;
+  threadId: string;
+  input: JsonValue[];
+  params: JsonObject;
+  authoredTurn: MobileAuthoredTurn;
+  promptPreview: string;
+  promptBytes: number;
+  attachmentCount: number;
+  createdAt: string;
+};
+
 const DEFAULT_CHAT_TRANSCRIPT_ENTRY_LIMIT = 120;
 const DEFAULT_CHAT_TRANSCRIPT_BYTE_LIMIT = 768 * 1024;
 const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
-const BRIDGE_VERSION = "0.4.2";
+const MAX_PROMPT_QUEUE_ITEMS = 50;
+const BRIDGE_VERSION = "0.4.3";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 
@@ -89,6 +102,8 @@ export class BridgeServer {
   private mobile: WebSocket | null = null;
   private mobileSender: QueuedWebSocketSender | null = null;
   private readonly activeTurns = new Map<string, string>();
+  private readonly startingThreads = new Set<string>();
+  private readonly promptQueues = new Map<string, QueuedPromptTurn[]>();
   private readonly mobileAuthoredTurns = new Map<string, MobileAuthoredTurn>();
   private readonly mobileAuthoredTurnsByThread = new Map<string, MobileAuthoredTurn[]>();
   private readonly pendingApprovals = new Map<string, PendingApproval>();
@@ -101,6 +116,7 @@ export class BridgeServer {
   private readonly maxAttachmentBytes: number;
   private readonly maxAttachmentsPerTurn: number;
   private nextEventId = 1;
+  private nextPromptQueueId = 1;
   private readonly threadCwds = new Map<string, string>();
   private readonly startedAt = Date.now();
 
@@ -281,8 +297,16 @@ export class BridgeServer {
         await this.startThread(ws, message);
       } else if (message.type === "turn.start" || message.type === "turn.send") {
         await this.startTurn(ws, message);
+      } else if (message.type === "turn.steer") {
+        await this.steerTurn(ws, message);
       } else if (message.type === "turn.stop") {
         await this.stopTurn(ws, message);
+      } else if (message.type === "queue.list") {
+        this.listPromptQueue(ws, message);
+      } else if (message.type === "queue.move") {
+        this.movePromptQueueItem(ws, message);
+      } else if (message.type === "queue.cancel") {
+        this.cancelPromptQueueItem(ws, message);
       } else if (message.type === "approval.respond") {
         await this.respondToApproval(ws, message);
       } else if (message.type === "thread.compact") {
@@ -359,53 +383,173 @@ export class BridgeServer {
       throw new Error(`${message.type} requires a non-empty prompt.`);
     }
 
-    const cwd = typeof message.cwd === "string" ? message.cwd : this.threadCwds.get(message.threadId);
-    await this.ensureThreadResumed(message.threadId, message, cwd);
-    const input = await this.buildTurnInput(message.prompt, message.attachments, cwd);
-    const sandbox = safeSandbox(message.sandbox);
-    const params: JsonObject = {
-      threadId: message.threadId,
-      input,
-      cwd: typeof message.cwd === "string" ? message.cwd : undefined,
-      model: typeof message.model === "string" ? message.model : undefined,
-      approvalPolicy: safeApprovalPolicy(message.approvalPolicy),
-      approvalsReviewer: "user",
-      sandboxPolicy: asJsonValue(sandboxPolicyFromMode(sandbox, cwd)),
-      effort: safeReasoningEffort(message.reasoningEffort),
-      summary: safeReasoningSummary(message.reasoningSummary)
-    };
+    const shouldQueue = this.isThreadBusy(message.threadId);
+    if (!shouldQueue) {
+      this.startingThreads.add(message.threadId);
+    }
 
-    this.logger.info("mobile.turn_start", {
-      id: message.id,
-      threadId: message.threadId,
-      promptBytes: Buffer.byteLength(message.prompt, "utf8"),
-      attachmentCount: Array.isArray(message.attachments) ? message.attachments.length : 0,
-      hasCwd: typeof message.cwd === "string",
-      hasModel: typeof message.model === "string",
-      sandbox,
-      reasoningEffort: safeReasoningEffort(message.reasoningEffort) ?? null
-    });
-    const authoredTurn: MobileAuthoredTurn = { threadId: message.threadId, input };
+    const cwd = typeof message.cwd === "string" ? message.cwd : this.threadCwds.get(message.threadId);
+    try {
+      await this.ensureThreadResumed(message.threadId, message, cwd);
+      const input = await this.buildTurnInput(message.prompt, message.attachments, cwd);
+      const sandbox = safeSandbox(message.sandbox);
+      const params: JsonObject = {
+        threadId: message.threadId,
+        input,
+        cwd: typeof message.cwd === "string" ? message.cwd : undefined,
+        model: typeof message.model === "string" ? message.model : undefined,
+        approvalPolicy: safeApprovalPolicy(message.approvalPolicy),
+        approvalsReviewer: "user",
+        sandboxPolicy: asJsonValue(sandboxPolicyFromMode(sandbox, cwd)),
+        effort: safeReasoningEffort(message.reasoningEffort),
+        summary: safeReasoningSummary(message.reasoningSummary)
+      };
+      const promptBytes = Buffer.byteLength(message.prompt, "utf8");
+      const attachmentCount = Array.isArray(message.attachments) ? message.attachments.length : 0;
+
+      this.logger.info(shouldQueue ? "mobile.turn_queued" : "mobile.turn_start", {
+        id: message.id,
+        threadId: message.threadId,
+        promptBytes,
+        attachmentCount,
+        hasCwd: typeof message.cwd === "string",
+        hasModel: typeof message.model === "string",
+        sandbox,
+        reasoningEffort: safeReasoningEffort(message.reasoningEffort) ?? null
+      });
+      const authoredTurn: MobileAuthoredTurn = { threadId: message.threadId, input };
+      if (shouldQueue) {
+        const queueItem = this.enqueuePromptTurn({
+          threadId: message.threadId,
+          input,
+          params,
+          authoredTurn,
+          promptPreview: promptPreview(message.prompt),
+          promptBytes,
+          attachmentCount
+        });
+        this.emitPromptQueueUpdated(message.threadId);
+        this.sendOk(ws, message.id, asJsonValue({
+          queued: true,
+          queueItem: publicQueueItem(queueItem),
+          queue: this.publicPromptQueue(message.threadId)
+        }));
+        return;
+      }
+
+      const result = await this.dispatchTurnStart(message.threadId, params, authoredTurn);
+      this.sendOk(ws, message.id, result);
+    } finally {
+      if (!shouldQueue) {
+        this.startingThreads.delete(message.threadId);
+      }
+    }
+  }
+
+  private async dispatchTurnStart(threadId: string, params: JsonObject, authoredTurn: MobileAuthoredTurn): Promise<JsonValue> {
     this.rememberMobileAuthoredTurn(authoredTurn);
     let result: JsonValue;
     try {
       result = await this.codex.request("turn/start", asJsonValue(params));
     } catch (error) {
-      const recoverableTurn = this.takeMobileAuthoredTurn(message.threadId) ?? authoredTurn;
+      const recoverableTurn = this.takeMobileAuthoredTurn(threadId) ?? authoredTurn;
       void this.persistMobileAuthoredTurn(recoverableTurn);
       throw error;
     }
     const turnId = turnIdFromStartResult(result);
     if (turnId) {
-      this.activeTurns.set(message.threadId, turnId);
+      this.activeTurns.set(threadId, turnId);
       authoredTurn.turnId = turnId;
       if (this.isMobileAuthoredTurnTracked(authoredTurn)) {
-        this.mobileAuthoredTurns.set(mobileTurnKey(message.threadId, turnId), authoredTurn);
+        this.mobileAuthoredTurns.set(mobileTurnKey(threadId, turnId), authoredTurn);
       }
     }
-    const recoverableTurn = this.takeMobileAuthoredTurn(message.threadId, turnId ?? undefined) ?? authoredTurn;
+    const recoverableTurn = this.takeMobileAuthoredTurn(threadId, turnId ?? undefined) ?? authoredTurn;
     void this.persistMobileAuthoredTurn(recoverableTurn);
+    return result;
+  }
+
+  private async steerTurn(ws: WebSocket, message: Extract<MobileMessage, { type: "turn.steer" }>): Promise<void> {
+    if (typeof message.threadId !== "string" || !message.threadId) {
+      throw new Error("turn.steer requires threadId.");
+    }
+    if (typeof message.prompt !== "string" || !message.prompt.trim()) {
+      throw new Error("turn.steer requires a non-empty prompt.");
+    }
+
+    const turnId = typeof message.turnId === "string" && message.turnId ? message.turnId : this.activeTurns.get(message.threadId);
+    if (!turnId) {
+      throw new Error("No active turn is tracked for this thread. Start a turn before steering.");
+    }
+
+    const cwd = typeof message.cwd === "string" ? message.cwd : this.threadCwds.get(message.threadId);
+    const input = await this.buildTurnInput(message.prompt, message.attachments, cwd);
+    this.logger.info("mobile.turn_steer", {
+      id: message.id,
+      threadId: message.threadId,
+      turnId,
+      promptBytes: Buffer.byteLength(message.prompt, "utf8"),
+      attachmentCount: Array.isArray(message.attachments) ? message.attachments.length : 0,
+      hasCwd: typeof message.cwd === "string"
+    });
+    const result = await this.codex.request("turn/steer", {
+      threadId: message.threadId,
+      input,
+      expectedTurnId: turnId
+    });
     this.sendOk(ws, message.id, result);
+  }
+
+  private listPromptQueue(ws: WebSocket, message: Extract<MobileMessage, { type: "queue.list" }>): void {
+    this.sendOk(ws, message.id, asJsonValue({
+      queue: this.publicPromptQueue(message.threadId),
+      count: this.promptQueueCount(message.threadId)
+    }));
+  }
+
+  private movePromptQueueItem(ws: WebSocket, message: Extract<MobileMessage, { type: "queue.move" }>): void {
+    if (typeof message.itemId !== "string" || !message.itemId) {
+      throw new Error("queue.move requires itemId.");
+    }
+    if (typeof message.toIndex !== "number" || !Number.isFinite(message.toIndex)) {
+      throw new Error("queue.move requires toIndex.");
+    }
+
+    const located = this.findQueuedPrompt(message.itemId, message.threadId);
+    if (!located) {
+      throw new Error("Queued prompt was not found.");
+    }
+
+    const [item] = located.queue.splice(located.index, 1);
+    const toIndex = Math.max(0, Math.min(Math.floor(message.toIndex), located.queue.length));
+    located.queue.splice(toIndex, 0, item);
+    this.emitPromptQueueUpdated(located.threadId);
+    this.sendOk(ws, message.id, asJsonValue({
+      moved: true,
+      queue: this.publicPromptQueue(located.threadId)
+    }));
+  }
+
+  private cancelPromptQueueItem(ws: WebSocket, message: Extract<MobileMessage, { type: "queue.cancel" }>): void {
+    if (typeof message.itemId !== "string" || !message.itemId) {
+      throw new Error("queue.cancel requires itemId.");
+    }
+
+    const located = this.findQueuedPrompt(message.itemId, message.threadId);
+    if (!located) {
+      throw new Error("Queued prompt was not found.");
+    }
+
+    const [item] = located.queue.splice(located.index, 1);
+    if (located.queue.length === 0) {
+      this.promptQueues.delete(located.threadId);
+    }
+    this.emitPromptQueueUpdated(located.threadId);
+    this.sendOk(ws, message.id, asJsonValue({
+      cancelled: true,
+      queueItem: publicQueueItem(item),
+      queue: this.publicPromptQueue(located.threadId)
+    }));
   }
 
   private async stopTurn(ws: WebSocket, message: Extract<MobileMessage, { type: "turn.stop" }>): Promise<void> {
@@ -424,7 +568,6 @@ export class BridgeServer {
 
     this.logger.info("mobile.turn_stop", { id: message.id, threadId, turnId });
     const result = await this.codex.request("turn/interrupt", { threadId, turnId });
-    this.activeTurns.delete(threadId);
     this.sendOk(ws, message.id, { stopped: true, result });
   }
 
@@ -675,8 +818,10 @@ export class BridgeServer {
       eventBufferSize: this.eventBuffer.length,
       eventReplayLimit: this.eventReplayLimit,
       activeTurnCount: this.activeTurns.size,
+      promptQueueCount: this.promptQueueCount(),
       pendingApprovalCount: this.pendingApprovals.size,
       activeTurns: [...this.activeTurns.entries()].map(([threadId, turnId]) => ({ threadId, turnId })),
+      promptQueue: this.publicPromptQueue(),
       pendingApprovals: [...this.pendingApprovals.entries()].map(([approvalId, approval]) => ({
         approvalId,
         method: approval.method
@@ -690,9 +835,120 @@ export class BridgeServer {
       connectedClient: status.connectedClient,
       codexRunning: status.codexRunning,
       activeTurnCount: status.activeTurnCount,
+      promptQueueCount: status.promptQueueCount,
       pendingApprovalCount: status.pendingApprovalCount
     });
     this.sendOk(ws, message.id, asJsonValue(status));
+  }
+
+  private isThreadBusy(threadId: string): boolean {
+    return this.activeTurns.has(threadId) || this.startingThreads.has(threadId);
+  }
+
+  private enqueuePromptTurn(options: Omit<QueuedPromptTurn, "id" | "createdAt">): QueuedPromptTurn {
+    const queue = this.promptQueues.get(options.threadId) ?? [];
+    if (queue.length >= MAX_PROMPT_QUEUE_ITEMS) {
+      throw new Error(`Prompt queue is full. Wait for an active turn or remove queued prompts first.`);
+    }
+
+    const item: QueuedPromptTurn = {
+      ...options,
+      id: `queue-${this.nextPromptQueueId++}`,
+      createdAt: new Date().toISOString()
+    };
+    queue.push(item);
+    this.promptQueues.set(options.threadId, queue);
+    return item;
+  }
+
+  private publicPromptQueue(threadId?: string): JsonObject[] {
+    if (threadId) {
+      return (this.promptQueues.get(threadId) ?? []).map(publicQueueItem);
+    }
+
+    return [...this.promptQueues.values()].flatMap((queue) => queue.map(publicQueueItem));
+  }
+
+  private promptQueueCount(threadId?: string): number {
+    if (threadId) {
+      return this.promptQueues.get(threadId)?.length ?? 0;
+    }
+    return [...this.promptQueues.values()].reduce((count, queue) => count + queue.length, 0);
+  }
+
+  private findQueuedPrompt(itemId: string, threadId?: string): { threadId: string; queue: QueuedPromptTurn[]; index: number } | null {
+    const queues = threadId ? [[threadId, this.promptQueues.get(threadId) ?? []] as const] : [...this.promptQueues.entries()];
+    for (const [candidateThreadId, queue] of queues) {
+      const index = queue.findIndex((item) => item.id === itemId);
+      if (index >= 0) {
+        return { threadId: candidateThreadId, queue, index };
+      }
+    }
+    return null;
+  }
+
+  private emitPromptQueueUpdated(threadId: string): void {
+    this.emitToMobile({
+      type: "prompt.queue.updated",
+      threadId,
+      queue: asJsonValue(this.publicPromptQueue(threadId)),
+      count: this.promptQueueCount(threadId)
+    });
+  }
+
+  private async startNextQueuedTurn(threadId: string): Promise<void> {
+    if (this.isThreadBusy(threadId)) {
+      return;
+    }
+
+    const queue = this.promptQueues.get(threadId) ?? [];
+    const next = queue.shift();
+    if (!next) {
+      this.promptQueues.delete(threadId);
+      this.emitPromptQueueUpdated(threadId);
+      return;
+    }
+    if (queue.length === 0) {
+      this.promptQueues.delete(threadId);
+    } else {
+      this.promptQueues.set(threadId, queue);
+    }
+    this.emitPromptQueueUpdated(threadId);
+
+    this.startingThreads.add(threadId);
+    let shouldContinueAfterFailure = false;
+    try {
+      this.logger.info("mobile.turn_queue_start", {
+        queueItemId: next.id,
+        threadId,
+        promptBytes: next.promptBytes,
+        attachmentCount: next.attachmentCount
+      });
+      await this.dispatchTurnStart(threadId, next.params, next.authoredTurn);
+      this.emitToMobile({
+        type: "prompt.queue.started",
+        threadId,
+        queueItem: asJsonValue(publicQueueItem(next))
+      });
+    } catch (error) {
+      shouldContinueAfterFailure = true;
+      this.logger.warn("mobile.turn_queue_failed", {
+        queueItemId: next.id,
+        threadId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      this.emitToMobile({
+        type: "prompt.queue.failed",
+        threadId,
+        queueItem: asJsonValue(publicQueueItem(next)),
+        message: error instanceof Error ? error.message : String(error)
+      });
+    } finally {
+      this.startingThreads.delete(threadId);
+    }
+    if (shouldContinueAfterFailure) {
+      void this.startNextQueuedTurn(threadId);
+    }
   }
 
   private isTokenFileValid(): boolean {
@@ -730,7 +986,8 @@ export class BridgeServer {
       const threadId = typeof params.threadId === "string" ? params.threadId : null;
       const turn = isRecord(params.turn) ? params.turn : null;
       const turnId = turn && typeof turn.id === "string" ? turn.id : null;
-      if (threadId && (!turnId || this.activeTurns.get(threadId) === turnId)) {
+      const shouldDrainQueue = threadId !== null && (!turnId || this.activeTurns.get(threadId) === turnId);
+      if (threadId && shouldDrainQueue) {
         this.activeTurns.delete(threadId);
       }
       if (threadId) {
@@ -738,6 +995,9 @@ export class BridgeServer {
         if (authoredTurn) {
           void this.persistMobileAuthoredTurn(authoredTurn);
         }
+      }
+      if (threadId && shouldDrainQueue) {
+        void this.startNextQueuedTurn(threadId);
       }
     }
 
@@ -1900,6 +2160,25 @@ function threadIdFromThreadResult(result: JsonValue): string | null {
 
 function firstMapKey(map: Map<string, unknown>): string | undefined {
   return map.keys().next().value;
+}
+
+function publicQueueItem(item: QueuedPromptTurn): JsonObject {
+  return {
+    id: item.id,
+    threadId: item.threadId,
+    promptPreview: item.promptPreview,
+    promptBytes: item.promptBytes,
+    attachmentCount: item.attachmentCount,
+    createdAt: item.createdAt
+  };
+}
+
+function promptPreview(prompt: string): string {
+  const normalized = prompt.trim().replace(/\s+/g, " ");
+  if (normalized.length <= 120) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 117)}...`;
 }
 
 function mobileTurnKey(threadId: string, turnId: string): string {

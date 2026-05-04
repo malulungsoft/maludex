@@ -500,6 +500,11 @@ rl.on("line", (line) => {
     return;
   }
 
+  if (message.method === "turn/steer") {
+    send({ id: message.id, result: {} });
+    return;
+  }
+
   send({
     id: message.id,
     error: {

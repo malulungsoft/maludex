@@ -61,6 +61,8 @@ final class BridgeClient: ObservableObject {
     @Published private(set) var projectRoots: [ProjectRootOption] = []
     @Published private(set) var models: [CodexModelOption] = []
     @Published private(set) var chats: [ChatThreadOption] = []
+    @Published private(set) var promptQueue: [PromptQueueItem] = []
+    @Published private(set) var activeTurnId: String?
     @Published private(set) var isLoadingOlderTranscript = false
     @Published private(set) var hasOlderTranscript = false
     @Published private(set) var hasSavedPairing = false
@@ -107,6 +109,10 @@ final class BridgeClient: ObservableObject {
 
     var canSendPrompt: Bool {
         connectionState == .connected && !threadId.isEmpty
+    }
+
+    var canSteerPrompt: Bool {
+        canSendPrompt && activeTurnId != nil
     }
 
     var activeThreadLabel: String {
@@ -465,6 +471,73 @@ final class BridgeClient: ObservableObject {
         ])
     }
 
+    func steerTurn(prompt: String, attachments: [MobileAttachment], cwd: String) {
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let activeTurnId, !threadId.isEmpty else {
+            lastError = "No active Codex turn is running for this chat."
+            return
+        }
+        guard !trimmedPrompt.isEmpty || !attachments.isEmpty else {
+            return
+        }
+
+        transcriptStore.addUserPrompt(trimmedPrompt.isEmpty ? "" : "Steer: \(trimmedPrompt)", attachments: attachments.map(\.transcriptAttachment))
+        publishTranscript()
+
+        var body: [String: JSONValue] = [
+            "id": .string(nextMessageId(prefix: "ios-steer")),
+            "type": .string("turn.steer"),
+            "threadId": .string(threadId),
+            "turnId": .string(activeTurnId),
+            "prompt": .string(trimmedPrompt)
+        ]
+        let trimmedCwd = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedCwd.isEmpty {
+            body["cwd"] = .string(trimmedCwd)
+        }
+        if !attachments.isEmpty {
+            body["attachments"] = .array(attachments.map { .object($0.payload) })
+        }
+        send(body)
+    }
+
+    func refreshPromptQueue() {
+        var body: [String: JSONValue] = [
+            "id": .string(nextMessageId(prefix: "ios-queue")),
+            "type": .string("queue.list")
+        ]
+        if !threadId.isEmpty {
+            body["threadId"] = .string(threadId)
+        }
+        send(body, reportErrors: false)
+    }
+
+    func moveQueuedPrompt(_ item: PromptQueueItem, direction: Int) {
+        guard let currentIndex = promptQueue.firstIndex(where: { $0.id == item.id }) else {
+            return
+        }
+        let targetIndex = max(0, min(promptQueue.count - 1, currentIndex + direction))
+        guard targetIndex != currentIndex else {
+            return
+        }
+        send([
+            "id": .string(nextMessageId(prefix: "ios-queue-move")),
+            "type": .string("queue.move"),
+            "threadId": .string(item.threadId),
+            "itemId": .string(item.id),
+            "toIndex": .number(Double(targetIndex))
+        ])
+    }
+
+    func cancelQueuedPrompt(_ item: PromptQueueItem) {
+        send([
+            "id": .string(nextMessageId(prefix: "ios-queue-cancel")),
+            "type": .string("queue.cancel"),
+            "threadId": .string(item.threadId),
+            "itemId": .string(item.id)
+        ])
+    }
+
     func approve(_ approval: ApprovalRequest) {
         respond(to: approval, decision: "accept")
     }
@@ -670,12 +743,19 @@ final class BridgeClient: ObservableObject {
                 refreshProjects()
                 refreshModels()
                 refreshChats()
+                refreshPromptQueue()
             case "response":
                 handleResponse(object)
             case "codex.event":
                 handleCodexEvent(object)
             case "approval.requested":
                 handleApproval(object)
+            case "prompt.queue.updated":
+                handlePromptQueueUpdated(object)
+            case "prompt.queue.started":
+                handlePromptQueueStarted(object)
+            case "prompt.queue.failed":
+                handlePromptQueueFailed(object)
             default:
                 appendEvent(type, JSONValue.object(object).description)
             }
@@ -719,6 +799,10 @@ final class BridgeClient: ObservableObject {
                 handleBridgeStatus(object)
                 return
             }
+            if id.hasPrefix("ios-queue") {
+                handlePromptQueueResponse(object)
+                return
+            }
             if id.hasPrefix("ios-open-chat") {
                 handleChatOpened(object)
                 return
@@ -732,6 +816,10 @@ final class BridgeClient: ObservableObject {
             }
             if id.hasPrefix("ios-subagent") {
                 handleSubagentStarted(object)
+                return
+            }
+            if id.hasPrefix("ios-steer") {
+                appendEvent("steer", "sent")
                 return
             }
             if id.hasPrefix("ios-compact") {
@@ -809,6 +897,58 @@ final class BridgeClient: ObservableObject {
         } ?? []
         chats = decoded
         appendEvent("chats", "\(decoded.count)")
+    }
+
+    private func handlePromptQueueResponse(_ object: [String: JSONValue]) {
+        guard let result = object["result"]?.objectValue else {
+            return
+        }
+        if let queue = decodePromptQueue(from: result["queue"]) {
+            promptQueue = queueForActiveThread(queue)
+        } else if let itemObject = result["queueItem"]?.objectValue,
+                  let item = PromptQueueItem(json: itemObject) {
+            promptQueue.removeAll { $0.id == item.id }
+            promptQueue.append(item)
+        }
+        appendEvent("queue", "\(promptQueue.count)")
+    }
+
+    private func handlePromptQueueUpdated(_ object: [String: JSONValue]) {
+        promptQueue = queueForActiveThread(decodePromptQueue(from: object["queue"]) ?? [])
+        appendEvent("queue", "updated \(promptQueue.count)")
+    }
+
+    private func handlePromptQueueStarted(_ object: [String: JSONValue]) {
+        guard let item = object["queueItem"]?.objectValue.flatMap(PromptQueueItem.init(json:)) else {
+            appendEvent("queue", "started")
+            return
+        }
+        promptQueue.removeAll { $0.id == item.id }
+        transcriptStore.addSystemMessage("Queued prompt started: \(item.promptPreview)")
+        publishTranscript()
+        appendEvent("queue", "started \(item.id)")
+    }
+
+    private func handlePromptQueueFailed(_ object: [String: JSONValue]) {
+        let message = object["message"]?.stringValue ?? "Queued prompt failed."
+        lastError = userFacingBridgeError(["message": .string(message)])
+        handlePromptQueueUpdated(object)
+    }
+
+    private func decodePromptQueue(from value: JSONValue?) -> [PromptQueueItem]? {
+        value?.arrayValue?.compactMap { item in
+            guard let object = item.objectValue else {
+                return nil
+            }
+            return PromptQueueItem(json: object)
+        }
+    }
+
+    private func queueForActiveThread(_ items: [PromptQueueItem]) -> [PromptQueueItem] {
+        guard !threadId.isEmpty else {
+            return items
+        }
+        return items.filter { $0.threadId == threadId }
     }
 
     private func handleBridgeStatus(_ object: [String: JSONValue]) {
@@ -902,6 +1042,16 @@ final class BridgeClient: ObservableObject {
             return
         }
 
+        if method == "turn/started",
+           let eventThreadId = params["threadId"]?.stringValue,
+           let turn = params["turn"]?.objectValue,
+           let turnId = turn["id"]?.stringValue {
+            if eventThreadId == threadId {
+                activeTurnId = turnId
+                refreshPromptQueue()
+            }
+        }
+
         if method == "item/agentMessage/delta",
            let threadId = params["threadId"]?.stringValue,
            let turnId = params["turnId"]?.stringValue,
@@ -917,6 +1067,10 @@ final class BridgeClient: ObservableObject {
                let turnId = turn["id"]?.stringValue {
                 transcriptStore.finishAssistantTurn(threadId, turnId: turnId)
                 publishTranscript()
+                if threadId == self.threadId {
+                    activeTurnId = nil
+                    refreshPromptQueue()
+                }
             }
             approvals.removeAll()
         }
@@ -957,8 +1111,11 @@ final class BridgeClient: ObservableObject {
     private func setActiveThread(_ id: String) {
         if threadId != id {
             threadId = id
+            activeTurnId = nil
+            promptQueue.removeAll()
             transcriptStore.addSystemMessage("Thread started: \(shortThreadId(id))")
             publishTranscript()
+            refreshPromptQueue()
         }
         appendEvent("thread", "started \(id)")
     }

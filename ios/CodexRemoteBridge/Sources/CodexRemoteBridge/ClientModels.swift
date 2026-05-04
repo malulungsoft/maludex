@@ -47,6 +47,32 @@ struct ProjectRootOption: Identifiable, Equatable {
     }
 }
 
+struct PromptQueueItem: Identifiable, Equatable {
+    let id: String
+    let threadId: String
+    let promptPreview: String
+    let promptBytes: Int
+    let attachmentCount: Int
+    let createdAt: Date?
+
+    init?(json: [String: JSONValue]) {
+        guard let id = json["id"]?.stringValue,
+              let threadId = json["threadId"]?.stringValue else {
+            return nil
+        }
+        self.id = id
+        self.threadId = threadId
+        self.promptPreview = json["promptPreview"]?.stringValue ?? "Queued prompt"
+        self.promptBytes = Int(json["promptBytes"]?.numberValue ?? 0)
+        self.attachmentCount = Int(json["attachmentCount"]?.numberValue ?? 0)
+        if let createdAtText = json["createdAt"]?.stringValue {
+            self.createdAt = ISO8601DateFormatter().date(from: createdAtText)
+        } else {
+            self.createdAt = nil
+        }
+    }
+}
+
 struct CodexModelOption: Identifiable, Equatable {
     let model: String
     let displayName: String
@@ -259,7 +285,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.4.2"
+let maludexClientVersion = "0.4.3"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)

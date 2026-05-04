@@ -369,6 +369,18 @@ private struct ProjectScreen: View {
         .background(AppPalette.background)
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
+                if !bridge.promptQueue.isEmpty {
+                    PromptQueuePanel(
+                        items: bridge.promptQueue,
+                        moveUp: { bridge.moveQueuedPrompt($0, direction: -1) },
+                        moveDown: { bridge.moveQueuedPrompt($0, direction: 1) },
+                        cancel: { bridge.cancelQueuedPrompt($0) }
+                    )
+                    .padding(.horizontal)
+                    .padding(.top, 10)
+                    .padding(.bottom, 6)
+                }
+
                 if let approval = bridge.approvals.first {
                     ApprovalCard(approval: approval)
                         .padding(.horizontal)
@@ -384,7 +396,8 @@ private struct ProjectScreen: View {
                     fileImporterPresented: $fileImporterPresented,
                     voiceState: speech,
                     toggleVoice: toggleVoice,
-                    send: sendPrompt
+                    send: sendPrompt,
+                    steer: steerPrompt
                 )
             }
             .background(AppPalette.panel)
@@ -433,6 +446,18 @@ private struct ProjectScreen: View {
         )
         prompt = ""
         attachments.removeAll()
+    }
+
+    private func steerPrompt() {
+        speech.stop()
+        bridge.steerTurn(
+            prompt: prompt,
+            attachments: attachments,
+            cwd: bridge.selectedProjectPath
+        )
+        prompt = ""
+        attachments.removeAll()
+        promptFocused = false
     }
 
     private func toggleVoice() {
@@ -1288,6 +1313,7 @@ private struct EmptyTranscriptView: View {
 
 private struct TranscriptBubble: View {
     let entry: TranscriptEntry
+    @State private var expanded = false
 
     var body: some View {
         HStack {
@@ -1323,7 +1349,20 @@ private struct TranscriptBubble: View {
                     Text(entry.text)
                         .font(.body)
                         .textSelection(.enabled)
+                        .lineLimit(isCollapsed ? 6 : nil)
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if canCollapse {
+                        Button {
+                            expanded.toggle()
+                        } label: {
+                            Label(expanded ? "Collapse" : "Expand", systemImage: expanded ? "chevron.up" : "chevron.down")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(AppPalette.accent)
+                        .accessibilityLabel(expanded ? "Collapse message" : "Expand message")
+                    }
                 }
 
                 TranscriptAttachmentGrid(attachments: entry.attachments)
@@ -1365,6 +1404,14 @@ private struct TranscriptBubble: View {
         case .system:
             return "Thread"
         }
+    }
+
+    private var canCollapse: Bool {
+        !entry.isStreaming && (entry.text.count > 360 || entry.text.split(separator: "\n").count > 8)
+    }
+
+    private var isCollapsed: Bool {
+        canCollapse && !expanded
     }
 
     private var alignment: Alignment {
@@ -1506,6 +1553,94 @@ private struct ApprovalCard: View {
     }
 }
 
+private struct PromptQueuePanel: View {
+    let items: [PromptQueueItem]
+    let moveUp: (PromptQueueItem) -> Void
+    let moveDown: (PromptQueueItem) -> Void
+    let cancel: (PromptQueueItem) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Queue", systemImage: "text.line.first.and.arrowtriangle.forward")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppPalette.ink)
+                Spacer()
+                Text("\(items.count)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            ScrollView {
+                VStack(spacing: 8) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        HStack(spacing: 8) {
+                            Text("\(index + 1)")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(AppPalette.accent)
+                                .frame(width: 22, height: 22)
+                                .background(AppPalette.accent.opacity(0.12), in: Circle())
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.promptPreview.isEmpty ? "Queued prompt" : item.promptPreview)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                Text(queueDetail(item))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer(minLength: 4)
+
+                            Button {
+                                moveUp(item)
+                            } label: {
+                                Label("Move up", systemImage: "chevron.up")
+                                    .labelStyle(.iconOnly)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(index == 0)
+                            .accessibilityLabel("Move queued prompt up")
+
+                            Button {
+                                moveDown(item)
+                            } label: {
+                                Label("Move down", systemImage: "chevron.down")
+                                    .labelStyle(.iconOnly)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(index == items.count - 1)
+                            .accessibilityLabel("Move queued prompt down")
+
+                            Button {
+                                cancel(item)
+                            } label: {
+                                Label("Cancel queued prompt", systemImage: "xmark")
+                                    .labelStyle(.iconOnly)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Cancel queued prompt")
+                        }
+                        .padding(8)
+                        .background(AppPalette.input, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+            }
+            .frame(maxHeight: 156)
+        }
+        .padding(12)
+        .panelStyle(border: AppPalette.accent.opacity(0.24))
+    }
+
+    private func queueDetail(_ item: PromptQueueItem) -> String {
+        let bytes = ByteCountFormatter.string(fromByteCount: Int64(item.promptBytes), countStyle: .file)
+        if item.attachmentCount > 0 {
+            return "\(bytes) · \(item.attachmentCount) attachments"
+        }
+        return bytes
+    }
+}
+
 private struct PromptComposer: View {
     @EnvironmentObject private var bridge: BridgeClient
     @Binding var prompt: String
@@ -1516,6 +1651,7 @@ private struct PromptComposer: View {
     @ObservedObject var voiceState: SpeechInputController
     let toggleVoice: () -> Void
     let send: () -> Void
+    let steer: () -> Void
 
     var body: some View {
         VStack(spacing: 10) {
@@ -1583,6 +1719,18 @@ private struct PromptComposer: View {
                 .accessibilityLabel(voiceState.isListening ? "Stop voice input" : "Voice input")
 
                 Spacer()
+
+                Button {
+                    steer()
+                    promptFocused.wrappedValue = false
+                } label: {
+                    Label("Steer", systemImage: "arrowshape.turn.up.right")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Steer active turn")
+                .disabled(!bridge.canSteerPrompt || (prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty))
 
                 Button {
                     send()

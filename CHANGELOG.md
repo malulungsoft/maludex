@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3 - 2026-05-04
+
+- Add a mobile prompt queue: prompts sent while a Codex turn is active are queued and automatically run in order.
+- Add queue reordering and cancellation controls from the iPhone app.
+- Add turn steering so the iPhone app can send additional guidance to the active Codex turn.
+- Collapse long transcript bubbles by default to make mobile chat history easier to scroll.
+
 ## 0.4.2 - 2026-05-04
 
 - Persist iPhone-authored prompts into Codex desktop thread history as soon as a turn starts, so interrupted or long-running turns remain recoverable without logging raw prompt bodies.

@@ -197,7 +197,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.4.2",
+      bridgeVersion: "0.4.3",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -298,7 +298,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.4.2"
+    bridgeVersion: "0.4.3"
   });
 
   ws.send(
@@ -1128,6 +1128,108 @@ test("persists iPhone-authored prompts after turn start even before completion",
           content: [{ type: "input_text", text: prompt }]
         }
       ]
+    }
+  });
+
+  ws.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("queues prompts while a turn is active and starts them in reordered order", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const reportFile = path.join(temp, "mock-report.jsonl");
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_REPORT_FILE: reportFile,
+      MOCK_CODEX_RECENT_CWD: temp
+    },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const ws = await connect(`ws://${address.host}:${address.port}`, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(JSON.stringify({ id: "turn-active", type: "turn.start", threadId: "thread-1", prompt: "first running prompt" }));
+  await waitForMessage(ws, (message) => message.id === "turn-active");
+
+  ws.send(JSON.stringify({ id: "turn-queued-1", type: "turn.start", threadId: "thread-1", prompt: "second queued prompt" }));
+  const queuedOne = await waitForMessage<Record<string, unknown>>(ws, (message) => message.id === "turn-queued-1");
+  expect(queuedOne).toMatchObject({ type: "response", ok: true, result: { queued: true } });
+
+  ws.send(JSON.stringify({ id: "turn-queued-2", type: "turn.start", threadId: "thread-1", prompt: "third queued prompt" }));
+  const queuedTwo = await waitForMessage<Record<string, unknown>>(ws, (message) => message.id === "turn-queued-2");
+  const queuedTwoResult = queuedTwo.result as Record<string, unknown>;
+  const queuedTwoItem = queuedTwoResult.queueItem as Record<string, unknown>;
+
+  ws.send(JSON.stringify({ id: "queue-move", type: "queue.move", itemId: queuedTwoItem.id, toIndex: 0 }));
+  const moved = await waitForMessage<Record<string, unknown>>(ws, (message) => message.id === "queue-move");
+  const movedResult = moved.result as Record<string, unknown>;
+  const movedQueue = movedResult.queue as Array<Record<string, unknown>>;
+  expect(movedQueue[0]?.id).toBe(queuedTwoItem.id);
+
+  ws.send(JSON.stringify({ id: "stop-active", type: "turn.stop", threadId: "thread-1" }));
+  await waitForMessage(ws, (message) => message.id === "stop-active");
+
+  const startedQueued = await waitForReport(
+    reportFile,
+    (entry) => entry.message.method === "turn/start" && JSON.stringify(entry.message).includes("third queued prompt")
+  );
+  expect(startedQueued.message).toMatchObject({ method: "turn/start", params: { threadId: "thread-1" } });
+
+  ws.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("steers the active Codex turn with additional mobile input", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const reportFile = path.join(temp, "mock-report.jsonl");
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_REPORT_FILE: reportFile,
+      MOCK_CODEX_RECENT_CWD: temp
+    },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const ws = await connect(`ws://${address.host}:${address.port}`, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(JSON.stringify({ id: "turn-active-steer", type: "turn.start", threadId: "thread-1", prompt: "long running prompt" }));
+  await waitForMessage(ws, (message) => message.id === "turn-active-steer");
+
+  ws.send(JSON.stringify({ id: "turn-steer", type: "turn.steer", threadId: "thread-1", prompt: "prioritize the failing test first" }));
+  const steered = await waitForMessage<Record<string, unknown>>(ws, (message) => message.id === "turn-steer");
+  expect(steered).toMatchObject({ type: "response", ok: true });
+
+  const report = await waitForReport(reportFile, (entry) => entry.message.method === "turn/steer");
+  expect(report.message).toMatchObject({
+    method: "turn/steer",
+    params: {
+      threadId: "thread-1",
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "prioritize the failing test first", text_elements: [] }]
     }
   });
 

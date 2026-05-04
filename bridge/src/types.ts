@@ -78,6 +78,33 @@ export type MobileMessage =
     }
   | {
       id?: string;
+      type: "turn.steer";
+      threadId: string;
+      turnId?: string;
+      prompt: string;
+      cwd?: string;
+      attachments?: MobileAttachment[];
+    }
+  | {
+      id?: string;
+      type: "queue.list";
+      threadId?: string;
+    }
+  | {
+      id?: string;
+      type: "queue.move";
+      itemId: string;
+      threadId?: string;
+      toIndex: number;
+    }
+  | {
+      id?: string;
+      type: "queue.cancel";
+      itemId: string;
+      threadId?: string;
+    }
+  | {
+      id?: string;
       type: "approval.respond";
       approvalId: string;
       decision?: ApprovalDecision;
