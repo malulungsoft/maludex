@@ -175,6 +175,7 @@ struct ContentView: View {
                 .ignoresSafeArea()
             }
             .onAppear {
+                bridge.startDemoPlaybackIfNeeded()
                 bridge.setAppIsActive(scenePhase == .active)
                 guard !attemptedSavedConnect else { return }
                 attemptedSavedConnect = true
@@ -366,7 +367,7 @@ private struct ProjectScreen: View {
                             updateChromeVisibility(forDragTranslation: value.translation.height)
                         }
                 )
-                .onChange(of: bridge.transcript.count) { _, _ in
+                .onChange(of: bridge.transcript) { _, _ in
                     if let target = requestedTranscriptSearchTarget {
                         withAnimation(.easeOut(duration: 0.2)) {
                             proxy.scrollTo(target, anchor: .center)

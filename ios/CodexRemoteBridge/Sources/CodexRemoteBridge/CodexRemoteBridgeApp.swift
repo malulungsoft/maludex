@@ -2,7 +2,11 @@ import SwiftUI
 
 @main
 struct MaludexApp: App {
-    @StateObject private var bridge = BridgeClient()
+    @StateObject private var bridge: BridgeClient
+
+    init() {
+        _bridge = StateObject(wrappedValue: BridgeClient(demoScenario: CommandLine.arguments.contains("--demo-ui")))
+    }
 
     var body: some Scene {
         WindowGroup {

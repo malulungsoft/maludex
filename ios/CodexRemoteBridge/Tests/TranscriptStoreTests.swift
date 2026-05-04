@@ -16,6 +16,18 @@ struct TranscriptStoreTests {
         require(store.entries[1].role == .assistant, "second message should be assistant")
         require(store.entries[1].text == "hello", "assistant deltas should merge")
         require(store.entries[1].isStreaming == false, "completed turn should stop streaming")
+
+        let remoteSnapshot = [
+            TranscriptEntry(
+                role: .assistant,
+                text: "desktop update",
+                threadId: "thread-1",
+                turnId: "desktop-turn-1",
+                createdAt: Date(timeIntervalSince1970: 20)
+            )
+        ]
+        require(store.replaceIfChanged(with: remoteSnapshot), "changed desktop snapshots should replace the local transcript")
+        require(!store.replaceIfChanged(with: remoteSnapshot), "identical desktop snapshots should not churn transcript IDs")
     }
 
     static func require(_ condition: @autoclosure () -> Bool, _ message: String) {

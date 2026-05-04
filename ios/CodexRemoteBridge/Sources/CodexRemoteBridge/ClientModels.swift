@@ -612,7 +612,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.7.2"
+let maludexClientVersion = "0.7.3"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
@@ -676,6 +676,27 @@ func userFacingConnectionError(_ message: String) -> String {
 
 func normalizedReconnectEventId(current: Int, serverLastEventId: Int) -> Int {
     serverLastEventId < current ? max(0, serverLastEventId) : current
+}
+
+func shouldRefreshActiveChat(
+    isConnected: Bool,
+    threadId: String,
+    isLoadingOlderTranscript: Bool,
+    hasActiveTurn: Bool,
+    now: Date,
+    lastRefreshAt: Date?,
+    minimumInterval: TimeInterval
+) -> Bool {
+    guard isConnected,
+          !threadId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+          !isLoadingOlderTranscript,
+          !hasActiveTurn else {
+        return false
+    }
+    guard let lastRefreshAt else {
+        return true
+    }
+    return now.timeIntervalSince(lastRefreshAt) >= minimumInterval
 }
 
 struct MobileNotificationIntent: Equatable {
