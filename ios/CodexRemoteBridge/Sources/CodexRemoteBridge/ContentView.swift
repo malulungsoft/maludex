@@ -366,6 +366,7 @@ private struct ProjectScreen: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppPalette.background)
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
@@ -552,9 +553,10 @@ private struct ProjectFloatingHeader: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ProjectIdentity()
-                    .layoutPriority(1)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    .clipped()
 
                 Spacer(minLength: 4)
 
@@ -602,6 +604,7 @@ private struct ProjectFloatingHeader: View {
         .padding(.top, 8)
         .padding(.bottom, isExpanded ? 10 : 8)
         .background(AppPalette.background.opacity(0.96))
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -610,22 +613,23 @@ private struct ProjectIdentity: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            BrandMark(size: 34)
+            BrandMark(size: 32)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(Brand.name)
                     .font(.title3.weight(.heavy))
                     .foregroundStyle(AppPalette.ink)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+                    .minimumScaleFactor(0.66)
                     .allowsTightening(true)
 
                 Text(bridge.activeBridgeLabel)
                     .font(.caption.monospaced().weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    .minimumScaleFactor(0.62)
             }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .combine)
     }
@@ -635,15 +639,20 @@ private struct ProjectHeaderIconButton: View {
     let title: String
     let systemImage: String
     let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .labelStyle(.iconOnly)
-                .font(.headline.weight(.semibold))
-                .frame(width: 42, height: 42)
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(AppPalette.accent)
+                .frame(width: 46, height: 46)
+                .background(AppPalette.userBubble, in: Circle())
+                .overlay(Circle().stroke(AppPalette.line, lineWidth: 1))
+                .opacity(isEnabled ? 1 : 0.45)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.plain)
+        .contentShape(Circle())
         .accessibilityLabel(title)
     }
 }
@@ -658,52 +667,17 @@ private struct ProjectControlPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Button {
-                    showDiagnostics()
-                } label: {
-                    Label("Diagnostics", systemImage: "stethoscope")
-                        .labelStyle(.iconOnly)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ProjectHeaderIconButton(title: "Diagnostics", systemImage: "stethoscope", action: showDiagnostics)
+                    ProjectHeaderIconButton(title: "Bridges", systemImage: "desktopcomputer", action: showBridges)
+                    ProjectHeaderIconButton(title: "Subagent", systemImage: "person.2.wave.2", action: showSubagent)
+                        .disabled(bridge.threadId.isEmpty)
+                    ProjectHeaderIconButton(title: "Settings", systemImage: "slider.horizontal.3", action: showSettings)
+                    ProjectHeaderIconButton(title: "Disconnect", systemImage: "power") {
+                        bridge.disconnect()
+                    }
                 }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Diagnostics")
-
-                Button {
-                    showBridges()
-                } label: {
-                    Label("Bridges", systemImage: "desktopcomputer")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Bridges")
-
-                Button {
-                    showSubagent()
-                } label: {
-                    Label("Subagent", systemImage: "person.2.wave.2")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Subagent")
-                .disabled(bridge.threadId.isEmpty)
-
-                Button {
-                    showSettings()
-                } label: {
-                    Label("Settings", systemImage: "slider.horizontal.3")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Settings")
-
-                Button {
-                    bridge.disconnect()
-                } label: {
-                    Label("Disconnect", systemImage: "power")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Disconnect")
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
 
@@ -1275,6 +1249,7 @@ private struct TranscriptView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -1316,70 +1291,7 @@ private struct TranscriptBubble: View {
     @State private var expanded = false
 
     var body: some View {
-        HStack {
-            if entry.role == .user {
-                Spacer(minLength: 36)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(label)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(labelColor)
-                    if entry.isStreaming {
-                        Text("Streaming")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 8)
-                    if !entry.text.isEmpty {
-                        Button {
-                            UIPasteboard.general.string = entry.text
-                        } label: {
-                            Label("Copy", systemImage: "doc.on.doc")
-                                .labelStyle(.iconOnly)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Copy text")
-                    }
-                }
-
-                if !entry.text.isEmpty {
-                    Text(entry.text)
-                        .font(.body)
-                        .textSelection(.enabled)
-                        .lineLimit(isCollapsed ? 6 : nil)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    if canCollapse {
-                        Button {
-                            expanded.toggle()
-                        } label: {
-                            Label(expanded ? "Collapse" : "Expand", systemImage: expanded ? "chevron.up" : "chevron.down")
-                                .font(.caption.weight(.semibold))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(AppPalette.accent)
-                        .accessibilityLabel(expanded ? "Collapse message" : "Expand message")
-                    }
-                }
-
-                TranscriptAttachmentGrid(attachments: entry.attachments)
-
-                HStack {
-                    if entry.role == .user {
-                        Spacer(minLength: 0)
-                    }
-                    Text(messageRelativeTime(from: entry.createdAt))
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
-                    if entry.role != .user {
-                        Spacer(minLength: 0)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
+        bubbleContent
             .padding(12)
             .background(background, in: RoundedRectangle(cornerRadius: 8))
             .overlay(
@@ -1387,11 +1299,76 @@ private struct TranscriptBubble: View {
                     .stroke(border, lineWidth: 1)
             )
             .shadow(color: AppPalette.bubbleShadow, radius: 8, x: 0, y: 4)
-            .frame(maxWidth: entry.role == .user ? 320 : .infinity, alignment: alignment)
+            .frame(maxWidth: entry.role == .user ? 320 : .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: alignment)
+            .padding(.leading, entry.role == .user ? 36 : 0)
+            .padding(.trailing, entry.role == .user ? 0 : 24)
+    }
 
-            if entry.role != .user {
-                Spacer(minLength: 24)
+    private var bubbleContent: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(label)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(labelColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                if entry.isStreaming {
+                    Text("Streaming")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if !entry.text.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = entry.text
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Copy text")
+                }
             }
+
+            if !entry.text.isEmpty {
+                Text(entry.text)
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .lineLimit(isCollapsed ? 6 : nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if canCollapse {
+                    Button {
+                        expanded.toggle()
+                    } label: {
+                        Label(expanded ? "Collapse" : "Expand", systemImage: expanded ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(AppPalette.accent)
+                    .accessibilityLabel(expanded ? "Collapse message" : "Expand message")
+                }
+            }
+
+            TranscriptAttachmentGrid(attachments: entry.attachments)
+
+            HStack {
+                if entry.role == .user {
+                    Spacer(minLength: 0)
+                }
+                Text(messageRelativeTime(from: entry.createdAt))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if entry.role != .user {
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -1679,56 +1656,53 @@ private struct PromptComposer: View {
 
             AttachmentStrip(attachments: $attachments)
 
-            HStack {
+            HStack(spacing: 8) {
                 Button {
                     bridge.stopActiveTurn()
                 } label: {
-                    Label("Stop", systemImage: "stop.circle")
-                        .labelStyle(.iconOnly)
+                    ComposerIconLabel(systemImage: "stop.circle")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .accessibilityLabel("Stop")
                 .disabled(!bridge.canSendPrompt)
 
                 PhotosPicker(selection: $photoItems, maxSelectionCount: 5, matching: .images) {
-                    Label("Photo", systemImage: "photo.on.rectangle")
-                        .labelStyle(.iconOnly)
+                    ComposerIconLabel(systemImage: "photo.on.rectangle")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .accessibilityLabel("Photo")
                 .disabled(attachments.count >= 5)
 
                 Button {
                     fileImporterPresented = true
                 } label: {
-                    Label("File", systemImage: "paperclip")
-                        .labelStyle(.iconOnly)
+                    ComposerIconLabel(systemImage: "paperclip")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .accessibilityLabel("File")
                 .disabled(attachments.count >= 5)
 
                 Button {
                     toggleVoice()
                 } label: {
-                    Label(voiceState.isListening ? "Stop voice" : "Voice", systemImage: voiceState.isListening ? "mic.fill" : "mic")
-                        .labelStyle(.iconOnly)
+                    ComposerIconLabel(
+                        systemImage: voiceState.isListening ? "mic.fill" : "mic",
+                        tint: voiceState.isListening ? AppPalette.warning : AppPalette.accent,
+                        background: voiceState.isListening ? AppPalette.accentWarm.opacity(0.12) : AppPalette.userBubble
+                    )
                 }
-                .buttonStyle(.bordered)
-                .tint(voiceState.isListening ? AppPalette.warning : AppPalette.accent)
+                .buttonStyle(.plain)
                 .accessibilityLabel(voiceState.isListening ? "Stop voice input" : "Voice input")
 
-                Spacer()
+                Spacer(minLength: 0)
 
                 Button {
                     steer()
                     promptFocused.wrappedValue = false
                 } label: {
-                    Label("Steer", systemImage: "arrowshape.turn.up.right")
-                        .labelStyle(.iconOnly)
-                        .frame(width: 44, height: 44)
+                    ComposerIconLabel(systemImage: "arrowshape.turn.up.right", width: 52)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .accessibilityLabel("Steer active turn")
                 .disabled(!bridge.canSteerPrompt || (prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty))
 
@@ -1736,15 +1710,12 @@ private struct PromptComposer: View {
                     send()
                     promptFocused.wrappedValue = false
                 } label: {
-                    Label("Send", systemImage: "paperplane.fill")
-                        .labelStyle(.iconOnly)
-                        .frame(width: 56, height: 44)
+                    ComposerIconLabel(systemImage: "paperplane.fill", width: 58, isPrimary: true)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
                 .accessibilityLabel("Send")
                 .disabled(!bridge.canSendPrompt || (prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty))
             }
-            .controlSize(.large)
 
             if let status = voiceState.statusText {
                 Text(status)
@@ -1754,6 +1725,29 @@ private struct PromptComposer: View {
             }
         }
         .padding()
+    }
+}
+
+private struct ComposerIconLabel: View {
+    let systemImage: String
+    var width: CGFloat = 48
+    var isPrimary = false
+    var tint: Color = AppPalette.accent
+    var background: Color = AppPalette.userBubble
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(isPrimary ? Color.white : tint)
+            .frame(width: width, height: 48)
+            .background(isPrimary ? AppPalette.accent : background, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(isPrimary ? Color.clear : AppPalette.line, lineWidth: 1)
+            )
+            .opacity(isEnabled ? 1 : 0.45)
+            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 }
 

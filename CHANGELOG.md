@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.4 - 2026-05-05
+
+- Fix the iPhone chat screen layout on large phones and larger text settings by constraining the project header, transcript bubbles, and prompt composer controls to the viewport.
+- Switch repository-local Git author metadata to `malulungbot <malulungbot@gmail.com>` for future GitHub updates.
+
 ## 0.4.3 - 2026-05-04
 
 - Add a mobile prompt queue: prompts sent while a Codex turn is active are queued and automatically run in order.
