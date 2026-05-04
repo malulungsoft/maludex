@@ -86,6 +86,8 @@ node scripts/extract-release-notes.mjs "$version" CHANGELOG.md >/tmp/maludex-rel
 npm ci
 npm run build
 npm test
+swift test --package-path macos/MaludexControlCenter
+swift build --package-path macos/MaludexControlCenter
 
 swiftc -parse-as-library \
   ios/CodexRemoteBridge/Sources/CodexRemoteBridge/JSONValue.swift \
@@ -101,11 +103,13 @@ swiftc -parse-as-library \
   ios/CodexRemoteBridge/Sources/CodexRemoteBridge/JSONValue.swift \
   ios/CodexRemoteBridge/Sources/CodexRemoteBridge/ClientModels.swift \
   ios/CodexRemoteBridge/Sources/CodexRemoteBridge/TranscriptStore.swift \
+  ios/CodexRemoteBridge/Sources/CodexRemoteBridge/Pairing.swift \
+  ios/CodexRemoteBridge/Sources/CodexRemoteBridge/DeviceStateStore.swift \
   ios/CodexRemoteBridge/Tests/TranscriptStoreTests.swift \
   -o /tmp/maludex-transcript-store-tests
 /tmp/maludex-transcript-store-tests
 
-xcodebuild -project ios/CodexRemoteBridge/CodexRemoteBridge.xcodeproj -scheme CodexRemoteBridge -destination 'generic/platform=iOS Simulator' build
+xcodebuild -project ios/CodexRemoteBridge/CodexRemoteBridge.xcodeproj -scheme CodexRemoteBridge -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 
 if [[ "$check_only" == "1" ]]; then
   echo "Release check passed for $tag"

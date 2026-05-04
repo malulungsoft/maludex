@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.5.0`
+Current version: `v0.6.0`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 
@@ -36,6 +36,7 @@ A short tour captured from the real SwiftUI app running in iOS Simulator is embe
 ## Features
 
 - SwiftUI iPhone client with QR pairing, camera scanner, connection status, project picker, prompt composer, streaming transcript, approval cards, attachment picker, voice input, and local transcript persistence.
+- SwiftUI macOS Control Center app for bridge health, LaunchAgent repair, restart/start/stop, token rotation, and pairing QR generation.
 - Multiple saved Mac bridges, each with its own Keychain token and per-bridge session state.
 - Node.js + TypeScript Mac bridge that translates between mobile WebSocket messages and Codex JSON-RPC over stdio JSONL.
 - Project listing and project creation under configured roots.
@@ -111,6 +112,18 @@ For a physical iPhone or off-Wi-Fi usage through Tailscale:
 ```
 
 That script detects the Mac's Tailscale IPv4 address, updates the LaunchAgent to bind only to that one `100.x.y.z` address, restarts the bridge, and writes a pairing QR image to `/tmp/maludex-pairing.png`.
+
+## macOS Control Center
+
+Open the standalone Mac app package in Xcode:
+
+```bash
+open macos/MaludexControlCenter/Package.swift
+```
+
+Run the `MaludexControlCenter` scheme. The app reads the redacted doctor JSON from the local repo and can refresh bridge status, repair a stale LaunchAgent path, restart/start/stop the bridge, rotate the pairing token, and display a new pairing QR.
+
+The app never displays the raw bearer token. Pairing QR images are still secrets because they encode the token.
 
 ## Optional Nginx Remote Access
 

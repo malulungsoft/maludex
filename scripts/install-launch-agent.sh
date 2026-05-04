@@ -84,9 +84,19 @@ chmod 600 "$PLIST"
 
 if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
   launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
+  sleep 1
 fi
 
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
+for attempt in 1 2 3 4 5; do
+  if launchctl bootstrap "gui/$(id -u)" "$PLIST"; then
+    break
+  fi
+  if [ "$attempt" = "5" ]; then
+    echo "Could not bootstrap $LABEL after $attempt attempts." >&2
+    exit 1
+  fi
+  sleep "$attempt"
+done
 launchctl kickstart -k "gui/$(id -u)/$LABEL"
 
 cat <<EOF

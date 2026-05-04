@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 - 2026-05-05
+
+- Add a standalone SwiftUI macOS Control Center app for bridge health, endpoint, version, LaunchAgent, and token status.
+- Add a shared TypeScript doctor engine and `npm run doctor -- --json` for redacted machine-readable bridge diagnostics.
+- Add Control Center actions for LaunchAgent repair, start, stop, restart, token rotation, and pairing QR generation.
+- Detect stale LaunchAgent repo paths and old bridge entrypoints as repairable errors.
+- Add macOS Control Center SwiftPM tests/builds to local release checks and GitHub CI.
+
 ## 0.5.0 - 2026-05-05
 
 - Persist queued iPhone prompts to a local `0600` queue file and restore them after bridge restarts.

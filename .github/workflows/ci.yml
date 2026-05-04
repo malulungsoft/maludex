@@ -21,6 +21,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      - run: swift test --package-path macos/MaludexControlCenter
+      - run: swift build --package-path macos/MaludexControlCenter
 
       - name: Swift client model tests
         run: |
@@ -40,9 +42,11 @@ jobs:
             ios/CodexRemoteBridge/Sources/CodexRemoteBridge/JSONValue.swift \
             ios/CodexRemoteBridge/Sources/CodexRemoteBridge/ClientModels.swift \
             ios/CodexRemoteBridge/Sources/CodexRemoteBridge/TranscriptStore.swift \
+            ios/CodexRemoteBridge/Sources/CodexRemoteBridge/Pairing.swift \
+            ios/CodexRemoteBridge/Sources/CodexRemoteBridge/DeviceStateStore.swift \
             ios/CodexRemoteBridge/Tests/TranscriptStoreTests.swift \
             -o /tmp/maludex-transcript-store-tests
           /tmp/maludex-transcript-store-tests
 
       - name: Xcode build
-        run: xcodebuild -project ios/CodexRemoteBridge/CodexRemoteBridge.xcodeproj -scheme CodexRemoteBridge -destination 'generic/platform=iOS Simulator' build
+        run: xcodebuild -project ios/CodexRemoteBridge/CodexRemoteBridge.xcodeproj -scheme CodexRemoteBridge -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build

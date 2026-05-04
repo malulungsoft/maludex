@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 .swiftpm/
+.build/
 DerivedData/
 build/
 *.xcresult
