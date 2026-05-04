@@ -72,6 +72,23 @@ function waitForMessage<T extends Record<string, unknown>>(
   });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function closeSocket(ws: WebSocket): Promise<void> {
+  return new Promise((resolve) => {
+    if (ws.readyState === WebSocket.CLOSED) {
+      resolve();
+      return;
+    }
+    ws.once("close", () => resolve());
+    ws.close();
+  });
+}
+
 async function readReport(file: string): Promise<Array<{ message: Record<string, unknown> }>> {
   const content = await readFile(file, "utf8");
   return content
@@ -197,7 +214,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.6.3",
+      bridgeVersion: "0.6.4",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -298,7 +315,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.6.3"
+    bridgeVersion: "0.6.4"
   });
 
   ws.send(
@@ -419,6 +436,90 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     params: { threadId: "thread-1", turnId: "turn-1" }
   });
   expect(logs.join("\n")).not.toContain(prompt);
+
+  replayWs.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("keeps approval requests pending while the iPhone reconnects", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const reportFile = path.join(temp, "mock-report.jsonl");
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_REPORT_FILE: reportFile,
+      MOCK_CODEX_DELAY_APPROVAL_MS: "75"
+    },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const wsUrl = `ws://${address.host}:${address.port}`;
+  const ws = await connect(wsUrl, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(
+    JSON.stringify({
+      id: "mobile-offline-thread",
+      type: "thread.start",
+      cwd: temp
+    })
+  );
+  await waitForMessage(ws, (message) => message.id === "mobile-offline-thread");
+
+  ws.send(
+    JSON.stringify({
+      id: "mobile-offline-turn",
+      type: "turn.start",
+      threadId: "thread-1",
+      prompt: "trigger approval while phone is away"
+    })
+  );
+  await waitForMessage(ws, (message) => message.id === "mobile-offline-turn");
+  await closeSocket(ws);
+  await sleep(150);
+
+  const replayWs = await connect(`${wsUrl}?afterEventId=0`, token);
+  await waitForMessage(replayWs, (message) => message.type === "bridge.ready");
+  const replayedApproval = await waitForMessage<Record<string, unknown> & { approvalId: string }>(
+    replayWs,
+    (message) => message.type === "approval.requested" && message.replayed === true,
+    1000
+  );
+  expect(replayedApproval).toMatchObject({
+    approvalId: "approval-1",
+    method: "item/commandExecution/requestApproval"
+  });
+
+  replayWs.send(
+    JSON.stringify({
+      id: "mobile-offline-approval",
+      type: "approval.respond",
+      approvalId: replayedApproval.approvalId,
+      decision: "accept"
+    })
+  );
+  await waitForMessage(replayWs, (message) => message.id === "mobile-offline-approval" && message.ok === true);
+  await waitForMessage(
+    replayWs,
+    (message) => message.type === "codex.event" && message.method === "serverRequest/resolved"
+  );
+
+  const report = await readReport(reportFile);
+  const approvalResponse = report.find((entry) => entry.message.id === "approval-1")?.message;
+  expect(approvalResponse).toMatchObject({
+    id: "approval-1",
+    result: { decision: "accept" }
+  });
 
   replayWs.close();
   await rm(temp, { recursive: true, force: true });

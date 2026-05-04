@@ -134,7 +134,7 @@ Decision mapping:
 - legacy exec/apply-patch approvals: mapped to `approved`, `approved_for_session`, `denied`, `abort`
 - permissions approvals: only requested permissions supplied by the mobile client are granted; otherwise the bridge returns an empty permission grant for the current turn
 
-If the phone disconnects while approvals are pending, the bridge keeps them pending for replay to the next authenticated connection. On bridge shutdown, pending approvals are declined.
+If the phone disconnects while approvals are pending, the bridge keeps them pending for replay to the next authenticated connection. Pending approvals time out after 10 minutes by default, and on bridge shutdown they are declined.
 
 ## Defaults
 

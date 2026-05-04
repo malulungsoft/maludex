@@ -30,6 +30,7 @@ import {
 type PendingApproval = {
   codexRequestId: JsonRpcId;
   method: string;
+  timer: NodeJS.Timeout;
 };
 
 type BufferedEvent = JsonObject & {
@@ -70,9 +71,10 @@ const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
 const MAX_PROMPT_QUEUE_ITEMS = 50;
-const BRIDGE_VERSION = "0.6.3";
+const BRIDGE_VERSION = "0.6.4";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
+const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 
 export type BridgeServerOptions = {
   host?: string;
@@ -83,6 +85,7 @@ export type BridgeServerOptions = {
   codexEnv?: NodeJS.ProcessEnv;
   logger?: Logger;
   requestTimeoutMs?: number;
+  approvalRequestTimeoutMs?: number;
   eventReplayLimit?: number;
   highWatermarkBytes?: number;
   maxQueuedMessages?: number;
@@ -121,6 +124,7 @@ export class BridgeServer {
   private readonly maxAttachmentsPerTurn: number;
   private readonly promptQueueFile: string;
   private readonly mobileHandoffStore: MobileHandoffStore;
+  private readonly approvalRequestTimeoutMs: number;
   private nextEventId = 1;
   private nextPromptQueueId = 1;
   private readonly threadCwds = new Map<string, string>();
@@ -134,6 +138,7 @@ export class BridgeServer {
     this.authenticator = new CapabilityAuthenticator(loadCapabilityTokenFromFile(options.tokenFile));
     this.eventReplayLimit = options.eventReplayLimit ?? 500;
     this.highWatermarkBytes = options.highWatermarkBytes ?? 1024 * 1024;
+    this.approvalRequestTimeoutMs = options.approvalRequestTimeoutMs ?? DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS;
     this.maxQueuedMessages = options.maxQueuedMessages ?? 256;
     this.projectRoots = normalizeProjectRoots(options.projectRoots ?? defaultProjectRoots());
     this.maxAttachmentBytes = options.maxAttachmentBytes ?? 15 * 1024 * 1024;
@@ -717,6 +722,7 @@ export class BridgeServer {
         ? message.result
         : approvalResult(pending.method, message.decision ?? "decline", message.permissions, message.scope);
     this.codex.respond(pending.codexRequestId, result);
+    clearTimeout(pending.timer);
     this.pendingApprovals.delete(message.approvalId);
     this.logger.info("mobile.approval_response", {
       id: message.id,
@@ -1138,15 +1144,17 @@ export class BridgeServer {
       return;
     }
     const approvalId = String(message.id);
+    const timer = setTimeout(() => {
+      this.timeoutApproval(approvalId);
+    }, this.approvalRequestTimeoutMs);
     this.pendingApprovals.set(approvalId, {
       codexRequestId: message.id as JsonRpcId,
-      method: message.method
+      method: message.method,
+      timer
     });
 
     if (!this.mobile || this.mobile.readyState !== WebSocket.OPEN) {
-      this.logger.warn("approval.no_mobile_client", { approvalId, method: message.method });
-      this.declineApproval(approvalId);
-      return;
+      this.logger.warn("approval.waiting_for_mobile", { approvalId, method: message.method });
     }
 
     this.emitToMobile({
@@ -1169,8 +1177,19 @@ export class BridgeServer {
       return;
     }
     this.codex.respond(pending.codexRequestId, approvalResult(pending.method, "decline"));
+    clearTimeout(pending.timer);
     this.pendingApprovals.delete(approvalId);
     this.logger.warn("approval.declined_without_client", { approvalId, method: pending.method });
+  }
+
+  private timeoutApproval(approvalId: string): void {
+    const pending = this.pendingApprovals.get(approvalId);
+    if (!pending) {
+      return;
+    }
+    this.codex.respond(pending.codexRequestId, approvalResult(pending.method, "decline"));
+    this.pendingApprovals.delete(approvalId);
+    this.logger.warn("approval.timed_out", { approvalId, method: pending.method });
   }
 
   private sendToMobile(message: JsonValue | JsonObject): void {

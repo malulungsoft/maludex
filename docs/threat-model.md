@@ -47,7 +47,7 @@ There is no cloud relay in this MVP.
 | Attachment previews leak local content to the paired phone | Only authenticated clients can request chat history; image previews are byte-limited, while documents are represented as metadata cards. Treat a paired iPhone as trusted. |
 | Attachments write unexpected locations | Attachments are written only under the selected workspace's `.codex-mobile-attachments/` directory with safe filenames and `0600` permissions. |
 | Attachment payload exhausts memory or disk | Bridge limits attachments to 5 per turn and 15 MB each. |
-| Approval request arrives while phone is offline | Bridge buffers approval events with event IDs for the next authenticated reconnect. |
+| Approval request arrives while phone is offline | Bridge buffers approval events with event IDs for the next authenticated reconnect, then denies them after the approval timeout if no trusted client responds. |
 | Stolen QR token reused | Token is high-entropy and file-protected. `npm run rotate-token` replaces it with a new `0600` token, and the running bridge disconnects existing mobile clients after detecting the file change. |
 | Slow client consumes unbounded memory | Bridge queues outbound frames up to a cap, then closes the slow client. |
 

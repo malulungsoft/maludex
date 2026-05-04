@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.4 - 2026-05-05
+
+- Keep Codex approval requests pending when the iPhone is temporarily disconnected instead of immediately declining them.
+- Replay pending approval cards to the next authenticated iPhone reconnect and keep the accepted response wired to Codex.
+- Add regression coverage for reconnect-safe approvals during mobile background/disconnect windows.
+
 ## 0.6.3 - 2026-05-05
 
 - Add a private desktop handoff inbox for iPhone-authored prompts so desktop Codex can explicitly recover mobile instructions that were not live-shared into the open desktop conversation.
