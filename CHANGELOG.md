@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.9 - 2026-05-05
+
+- Keep iPhone approval cards visible until the bridge confirms the approval response, instead of hiding them immediately on tap, and suppress duplicate approval taps while confirmation is pending.
+- Emit replay-safe `approval.responded` / `approval.resolved` bridge events so mobile clients can reconcile approval state.
+- Add integration coverage for approval response confirmation after reconnect-safe approval replay.
+
 ## 0.6.8 - 2026-05-05
 
 - Add `scripts/build-control-center-app.sh` to package the SwiftPM macOS Control Center executable as a local `.app` bundle.

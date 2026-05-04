@@ -71,7 +71,7 @@ const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
 const MAX_PROMPT_QUEUE_ITEMS = 50;
-const BRIDGE_VERSION = "0.6.8";
+const BRIDGE_VERSION = "0.6.9";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
@@ -731,6 +731,12 @@ export class BridgeServer {
       decision: message.decision ?? "custom"
     });
     this.sendOk(ws, message.id, { accepted: true });
+    this.emitToMobile({
+      type: "approval.responded",
+      approvalId: message.approvalId,
+      method: pending.method,
+      decision: message.decision ?? "custom"
+    });
   }
 
   private async listProjects(ws: WebSocket, message: Extract<MobileMessage, { type: "project.list" }>): Promise<void> {
@@ -1180,6 +1186,13 @@ export class BridgeServer {
     clearTimeout(pending.timer);
     this.pendingApprovals.delete(approvalId);
     this.logger.warn("approval.declined_without_client", { approvalId, method: pending.method });
+    this.emitToMobile({
+      type: "approval.resolved",
+      approvalId,
+      method: pending.method,
+      decision: "decline",
+      reason: "declined_without_client"
+    });
   }
 
   private timeoutApproval(approvalId: string): void {
@@ -1190,6 +1203,13 @@ export class BridgeServer {
     this.codex.respond(pending.codexRequestId, approvalResult(pending.method, "decline"));
     this.pendingApprovals.delete(approvalId);
     this.logger.warn("approval.timed_out", { approvalId, method: pending.method });
+    this.emitToMobile({
+      type: "approval.resolved",
+      approvalId,
+      method: pending.method,
+      decision: "decline",
+      reason: "timeout"
+    });
   }
 
   private sendToMobile(message: JsonValue | JsonObject): void {

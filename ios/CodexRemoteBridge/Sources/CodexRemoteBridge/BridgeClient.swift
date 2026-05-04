@@ -159,6 +159,7 @@ final class BridgeClient: ObservableObject {
     private var transcriptCursor: String?
     private var nextId = 1
     private var lastEventId = 0
+    private var pendingApprovalResponseIds: [String: String] = [:]
     private let transcriptStore = TranscriptStore()
     private let stateStore: DeviceStateStore
     private let notificationScheduler = LocalNotificationScheduler()
@@ -252,6 +253,7 @@ final class BridgeClient: ObservableObject {
         closeSocket(setOffline: true)
         connectionState = .offline
         approvals.removeAll()
+        pendingApprovalResponseIds.removeAll()
     }
 
     func forgetSavedDeviceState() {
@@ -569,8 +571,13 @@ final class BridgeClient: ObservableObject {
     }
 
     private func respond(to approval: ApprovalRequest, decision: String) {
+        guard !pendingApprovalResponseIds.values.contains(approval.id) else {
+            appendEvent("approval", "waiting for confirmation")
+            return
+        }
+        let requestId = nextMessageId(prefix: "ios-approval")
         var body: [String: JSONValue] = [
-            "id": .string(nextMessageId()),
+            "id": .string(requestId),
             "type": .string("approval.respond"),
             "approvalId": .string(approval.id),
             "decision": .string(decision)
@@ -583,8 +590,9 @@ final class BridgeClient: ObservableObject {
             body["scope"] = .string("turn")
         }
 
+        pendingApprovalResponseIds[requestId] = approval.id
         send(body)
-        approvals.removeAll { $0.id == approval.id }
+        appendEvent("approval", "sent \(decision)")
     }
 
     private func appendSessionSettings(to body: inout [String: JSONValue], includeAutoCompact: Bool) {
@@ -661,6 +669,7 @@ final class BridgeClient: ObservableObject {
         closeSocket(setOffline: false)
         connectionState = .failed
         approvals.removeAll()
+        pendingApprovalResponseIds.removeAll()
         isLoadingOlderTranscript = false
         appendEvent("bridge", "connection lost: \(error.localizedDescription)")
         if reportError {
@@ -780,6 +789,8 @@ final class BridgeClient: ObservableObject {
                 handleCodexEvent(object)
             case "approval.requested":
                 handleApproval(object)
+            case "approval.responded", "approval.resolved":
+                handleApprovalResolved(object)
             case "prompt.queue.updated":
                 handlePromptQueueUpdated(object)
             case "prompt.queue.started":
@@ -799,6 +810,10 @@ final class BridgeClient: ObservableObject {
             if let id = object["id"]?.stringValue,
                id.hasPrefix("ios-chat-history") {
                 isLoadingOlderTranscript = false
+            }
+            if let id = object["id"]?.stringValue,
+               id.hasPrefix("ios-approval") {
+                pendingApprovalResponseIds.removeValue(forKey: id)
             }
             if let error = object["error"]?.objectValue {
                 lastError = userFacingBridgeError(error)
@@ -842,6 +857,13 @@ final class BridgeClient: ObservableObject {
                 return
             }
             if id.hasPrefix("ios-ping") {
+                return
+            }
+            if id.hasPrefix("ios-approval") {
+                if let approvalId = pendingApprovalResponseIds.removeValue(forKey: id) {
+                    approvals.removeAll { $0.id == approvalId }
+                }
+                appendEvent("approval", "confirmed")
                 return
             }
             if id.hasPrefix("ios-subagent") {
@@ -1105,6 +1127,7 @@ final class BridgeClient: ObservableObject {
                 }
             }
             approvals.removeAll()
+            pendingApprovalResponseIds.removeAll()
         }
 
         if method == "thread/compacted" {
@@ -1139,6 +1162,18 @@ final class BridgeClient: ObservableObject {
         approvals.append(ApprovalRequest(id: approvalId, method: method, params: params))
         appendEvent("approval", method)
         scheduleNotification(type: "approval.requested", method: method, params: params, approvalId: approvalId)
+    }
+
+    private func handleApprovalResolved(_ object: [String: JSONValue]) {
+        updateLastEventId(from: object)
+        guard let approvalId = object["approvalId"]?.stringValue else {
+            return
+        }
+        approvals.removeAll { $0.id == approvalId }
+        pendingApprovalResponseIds = pendingApprovalResponseIds.filter { $0.value != approvalId }
+        let decision = object["decision"]?.stringValue ?? "resolved"
+        let reason = object["reason"]?.stringValue
+        appendEvent("approval", reason == nil ? decision : "\(decision) · \(reason!)")
     }
 
     private func setActiveThread(_ id: String) {

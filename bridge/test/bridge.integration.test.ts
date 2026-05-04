@@ -214,7 +214,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.6.8",
+      bridgeVersion: "0.6.9",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -315,7 +315,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.6.8"
+    bridgeVersion: "0.6.9"
   });
 
   ws.send(
@@ -380,6 +380,16 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     })
   );
   await waitForMessage(replayWs, (message) => message.id === "mobile-3" && message.ok === true);
+  const approvalResponded = await waitForMessage<Record<string, unknown> & { eventId: number }>(
+    replayWs,
+    (message) => message.type === "approval.responded"
+  );
+  expect(approvalResponded).toMatchObject({
+    type: "approval.responded",
+    approvalId: approval.approvalId,
+    method: "item/commandExecution/requestApproval",
+    decision: "accept"
+  });
 
   replayWs.send(
     JSON.stringify({
@@ -509,6 +519,10 @@ test("keeps approval requests pending while the iPhone reconnects", async () => 
     })
   );
   await waitForMessage(replayWs, (message) => message.id === "mobile-offline-approval" && message.ok === true);
+  await waitForMessage(
+    replayWs,
+    (message) => message.type === "approval.responded" && message.approvalId === replayedApproval.approvalId
+  );
   await waitForMessage(
     replayWs,
     (message) => message.type === "codex.event" && message.method === "serverRequest/resolved"
