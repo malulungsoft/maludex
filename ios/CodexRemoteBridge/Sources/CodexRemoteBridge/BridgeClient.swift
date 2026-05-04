@@ -196,15 +196,25 @@ final class BridgeClient: ObservableObject {
     private var transcriptCursor: String?
     private var nextId = 1
     private var lastEventId = 0
+    private var lastActiveChatRefreshAt: Date?
+    private var pendingActiveChatRefreshIds: Set<String> = []
     private var pendingApprovalResponseIds: [String: String] = [:]
     private let transcriptStore = TranscriptStore()
     private let stateStore: DeviceStateStore
     private let notificationScheduler = LocalNotificationScheduler()
+    private var demoPlaybackTask: Task<Void, Never>?
     private var suppressPersistence = false
     private var appIsActive = true
+    private var isDemoMode = false
 
-    init(stateStore: DeviceStateStore = DeviceStateStore()) {
+    init(stateStore: DeviceStateStore = DeviceStateStore(), demoScenario: Bool = false) {
         self.stateStore = stateStore
+        if demoScenario {
+            isDemoMode = true
+            suppressPersistence = true
+            loadDemoPairingState()
+            return
+        }
         restorePersistedState()
         refreshSavedPairingState()
         notificationScheduler.requestAuthorizationIfNeeded { [weak self] in
@@ -215,12 +225,26 @@ final class BridgeClient: ObservableObject {
         refreshNotificationAuthorizationStatus()
     }
 
+    deinit {
+        demoPlaybackTask?.cancel()
+    }
+
     func setAppIsActive(_ isActive: Bool) {
         appIsActive = isActive
         refreshNotificationAuthorizationStatus()
+        if isActive {
+            refreshActiveChatIfNeeded(force: true)
+        }
         if !isActive {
             schedulePendingApprovalNotifications()
         }
+    }
+
+    func startDemoPlaybackIfNeeded() {
+        guard isDemoMode, demoPlaybackTask == nil else {
+            return
+        }
+        startDemoPlayback()
     }
 
     func refreshNotificationAuthorizationStatus() {
@@ -232,10 +256,16 @@ final class BridgeClient: ObservableObject {
     }
 
     func connect(pairing: Pairing) {
+        guard !isDemoMode else {
+            loadConnectedDemoState()
+            return
+        }
         manuallyDisconnected = false
         cancelReconnect()
         closeSocket(setOffline: true)
         self.pairing = pairing
+        lastActiveChatRefreshAt = nil
+        pendingActiveChatRefreshIds.removeAll()
         do {
             try stateStore.savePairing(pairing)
             refreshSavedPairingState()
@@ -257,6 +287,9 @@ final class BridgeClient: ObservableObject {
     }
 
     func connectSavedPairingIfAvailable() {
+        guard !isDemoMode else {
+            return
+        }
         guard connectionState == .offline || connectionState == .failed else {
             return
         }
@@ -274,7 +307,9 @@ final class BridgeClient: ObservableObject {
 
     func resumeConnectionIfNeeded() {
         if connectionState == .connected {
-            sendPing()
+            if !refreshActiveChatIfNeeded(force: true) {
+                sendPing()
+            }
             return
         }
         if connectionState == .offline || connectionState == .failed {
@@ -283,6 +318,10 @@ final class BridgeClient: ObservableObject {
     }
 
     func connectSavedBridge(id: String) {
+        guard !isDemoMode else {
+            loadConnectedDemoState()
+            return
+        }
         guard connectionState == .offline || connectionState == .failed || connectionState == .connected else {
             return
         }
@@ -353,6 +392,11 @@ final class BridgeClient: ObservableObject {
     }
 
     func disconnect() {
+        guard !isDemoMode else {
+            loadDemoPairingState()
+            startDemoPlayback()
+            return
+        }
         manuallyDisconnected = true
         cancelReconnect()
         closeSocket(setOffline: true)
@@ -731,6 +775,10 @@ final class BridgeClient: ObservableObject {
     }
 
     private func send(_ body: [String: JSONValue], reportErrors: Bool = true) {
+        guard !isDemoMode else {
+            appendEvent(body["type"]?.stringValue ?? "demo", "demo mode")
+            return
+        }
         guard let task, connectionState == .connected else {
             if reportErrors {
                 lastError = userFacingConnectionError(connectionState == .connecting ? "Bridge is still connecting." : "Bridge is not connected.")
@@ -782,6 +830,7 @@ final class BridgeClient: ObservableObject {
         connectionState = .failed
         approvals.removeAll()
         clearPendingApprovalResponses()
+        activeTurnId = nil
         isLoadingOlderTranscript = false
         appendEvent("bridge", "connection lost: \(error.localizedDescription)")
         if reportError {
@@ -794,6 +843,7 @@ final class BridgeClient: ObservableObject {
         stopHeartbeat()
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
+        pendingActiveChatRefreshIds.removeAll()
         if setOffline {
             connectionState = .offline
         }
@@ -834,7 +884,10 @@ final class BridgeClient: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
                 await MainActor.run {
-                    self?.sendPing()
+                    guard let self else { return }
+                    if !self.refreshActiveChatIfNeeded() {
+                        self.sendPing()
+                    }
                 }
             }
         }
@@ -846,6 +899,9 @@ final class BridgeClient: ObservableObject {
     }
 
     private func sendPing() {
+        guard !isDemoMode else {
+            return
+        }
         guard connectionState == .connected else {
             return
         }
@@ -853,6 +909,51 @@ final class BridgeClient: ObservableObject {
             "id": .string(nextMessageId(prefix: "ios-ping")),
             "type": .string("ping")
         ], reportErrors: false)
+    }
+
+    @discardableResult
+    private func refreshActiveChatIfNeeded(force: Bool = false) -> Bool {
+        guard !isDemoMode else {
+            return false
+        }
+        let now = Date()
+        let shouldRefresh: Bool
+        if force {
+            shouldRefresh = connectionState == .connected
+                && !threadId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !isLoadingOlderTranscript
+                && activeTurnId == nil
+        } else {
+            shouldRefresh = shouldRefreshActiveChat(
+                isConnected: connectionState == .connected,
+                threadId: threadId,
+                isLoadingOlderTranscript: isLoadingOlderTranscript,
+                hasActiveTurn: activeTurnId != nil,
+                now: now,
+                lastRefreshAt: lastActiveChatRefreshAt,
+                minimumInterval: 12
+            )
+        }
+        guard shouldRefresh, pendingActiveChatRefreshIds.isEmpty else {
+            return false
+        }
+
+        let requestId = nextMessageId(prefix: "ios-sync-chat")
+        var body: [String: JSONValue] = [
+            "id": .string(requestId),
+            "type": .string("chat.open"),
+            "threadId": .string(threadId),
+            "turnLimit": .number(30.0),
+            "transcriptByteLimit": .number(Double(768 * 1024))
+        ]
+        if !selectedModel.isEmpty {
+            body["model"] = .string(selectedModel)
+        }
+        appendSessionSettings(to: &body, includeAutoCompact: true)
+        pendingActiveChatRefreshIds.insert(requestId)
+        lastActiveChatRefreshAt = now
+        send(body, reportErrors: false)
+        return true
     }
 
     private func handle(_ message: URLSessionWebSocketTask.Message) {
@@ -895,6 +996,7 @@ final class BridgeClient: ObservableObject {
                 refreshModels()
                 refreshChats()
                 refreshPromptQueue()
+                refreshActiveChatIfNeeded(force: true)
             case "response":
                 handleResponse(object)
             case "codex.event":
@@ -922,6 +1024,11 @@ final class BridgeClient: ObservableObject {
             if let id = object["id"]?.stringValue,
                id.hasPrefix("ios-chat-history") {
                 isLoadingOlderTranscript = false
+            }
+            if let id = object["id"]?.stringValue,
+               id.hasPrefix("ios-sync-chat") {
+                pendingActiveChatRefreshIds.remove(id)
+                return
             }
             if let id = object["id"]?.stringValue,
                id.hasPrefix("ios-approval") {
@@ -962,6 +1069,10 @@ final class BridgeClient: ObservableObject {
             }
             if id.hasPrefix("ios-open-chat") {
                 handleChatOpened(object)
+                return
+            }
+            if id.hasPrefix("ios-sync-chat") {
+                handleChatSynced(object)
                 return
             }
             if id.hasPrefix("ios-chat-history") {
@@ -1160,7 +1271,34 @@ final class BridgeClient: ObservableObject {
         }
         transcriptStore.replace(with: entries)
         publishTranscript()
+        lastActiveChatRefreshAt = Date()
         appendEvent("chat", "opened \(id)")
+    }
+
+    private func handleChatSynced(_ object: [String: JSONValue]) {
+        defer {
+            if let id = object["id"]?.stringValue {
+                pendingActiveChatRefreshIds.remove(id)
+            }
+        }
+        guard activeTurnId == nil,
+              let result = object["result"]?.objectValue,
+              let thread = result["thread"]?.objectValue,
+              let id = thread["id"]?.stringValue,
+              id == threadId else {
+            return
+        }
+
+        let entries: [TranscriptEntry] = result["transcript"]?.arrayValue?.compactMap { value in
+            guard let object = value.objectValue else { return nil }
+            return RemoteTranscriptEntry(json: object)?.transcriptEntry
+        } ?? []
+        transcriptCursor = result["transcriptCursor"]?.stringValue
+        hasOlderTranscript = result["hasOlderTranscript"]?.boolValue ?? (transcriptCursor != nil)
+        if transcriptStore.replaceIfChanged(with: entries) {
+            publishTranscript()
+            appendEvent("chat", "synced \(id)")
+        }
     }
 
     private func handleChatHistory(_ object: [String: JSONValue]) {
@@ -1236,6 +1374,7 @@ final class BridgeClient: ObservableObject {
                 if threadId == self.threadId {
                     activeTurnId = nil
                     refreshPromptQueue()
+                    refreshActiveChatIfNeeded(force: true)
                 }
             }
             approvals.removeAll()
@@ -1424,6 +1563,307 @@ final class BridgeClient: ObservableObject {
             lastEventId: lastEventId,
             transcript: transcriptStore.entries
         )
+    }
+
+    private func loadDemoPairingState() {
+        suppressPersistence = true
+        manuallyDisconnected = false
+        pairing = nil
+        task = nil
+        connectionState = .offline
+        events = [
+            BridgeEvent(title: "demo", detail: "actual Simulator UI"),
+            BridgeEvent(title: "bridge", detail: "ready for QR pairing")
+        ]
+        projects = []
+        projectRoots = []
+        models = []
+        chats = []
+        promptQueue = []
+        approvals = []
+        respondingApprovalIds = []
+        activeTurnId = nil
+        selectedProjectPath = ""
+        selectedModel = ""
+        selectedReasoningEffort = ReasoningEffortOption.fallback
+        selectedApprovalPolicy = ApprovalPolicyOption.onRequest.rawValue
+        selectedSandbox = SandboxOption.readOnly.rawValue
+        selectedLanguageCode = AppLanguage.english.rawValue
+        autoCompactEnabled = true
+        autoCompactTokenLimit = 120000
+        threadId = ""
+        promptDraft = ""
+        transcriptCursor = nil
+        hasOlderTranscript = false
+        isLoadingOlderTranscript = false
+        diagnostics = nil
+        notificationAuthorizationStatus = .authorized
+        customPromptTemplates = PromptTemplate.builtIn(language: .english)
+        favoriteProjectPaths = ["/Users/malulung/Documents/maludex"]
+        let demoPairing = Pairing(
+            host: "100.75.40.51",
+            port: 8765,
+            token: String(repeating: "d", count: 40),
+            usesTLS: false,
+            label: "Studio Mac"
+        )
+        let saved = SavedBridge(pairing: demoPairing, now: Date())
+        savedBridges = [
+            saved,
+            SavedBridge(
+                pairing: Pairing(
+                    host: "100.83.10.24",
+                    port: 8765,
+                    token: String(repeating: "e", count: 40),
+                    usesTLS: false,
+                    label: "MacBook Air"
+                ),
+                now: Date(timeIntervalSinceNow: -3600)
+            )
+        ]
+        activeBridgeId = saved.id
+        hasSavedPairing = true
+        savedPairingLabel = saved.label
+        transcriptStore.replace(with: [])
+        transcript = []
+    }
+
+    private func loadConnectedDemoState() {
+        suppressPersistence = true
+        let demoThreadId = "019debd0-b9a1-79b1-97a0-2d47bd12efbd"
+        let demoTurnId = "turn-demo-live"
+        pairing = Pairing(
+            host: "100.75.40.51",
+            port: 8765,
+            token: String(repeating: "d", count: 40),
+            usesTLS: false,
+            label: "Studio Mac"
+        )
+        connectionState = .connected
+        selectedProjectPath = "/Users/malulung/Documents/maludex"
+        selectedModel = "gpt-5.5"
+        selectedReasoningEffort = "high"
+        selectedApprovalPolicy = ApprovalPolicyOption.onRequest.rawValue
+        selectedSandbox = SandboxOption.workspaceWrite.rawValue
+        threadId = demoThreadId
+        activeTurnId = demoTurnId
+        promptDraft = "Ask maludex to keep the iPhone transcript in sync..."
+        projectRoots = [
+            ProjectRootOption(path: "/Users/malulung/Documents", name: "Documents"),
+            ProjectRootOption(path: "/Users/malulung/Developer", name: "Developer")
+        ]
+        projects = [
+            ProjectOption(path: "/Users/malulung/Documents/maludex", name: "maludex", source: "recent", updatedAt: Date().timeIntervalSince1970),
+            ProjectOption(path: "/Users/malulung/Documents/New project", name: "New project", source: "scan", updatedAt: Date().timeIntervalSince1970 - 7200)
+        ]
+        models = [
+            CodexModelOption(
+                model: "gpt-5.5",
+                displayName: "GPT-5.5",
+                detail: "Frontier model",
+                inputModalities: ["text", "image"],
+                supportedReasoningEfforts: ["low", "medium", "high", "xhigh"],
+                defaultReasoningEffort: "medium",
+                isDefault: true
+            ),
+            CodexModelOption(
+                model: "gpt-5.4-mini",
+                displayName: "GPT-5.4 Mini",
+                detail: "Fast coding model",
+                inputModalities: ["text", "image"],
+                supportedReasoningEfforts: ["low", "medium", "high"],
+                defaultReasoningEffort: "medium"
+            )
+        ]
+        chats = [
+            ChatThreadOption(json: [
+                "id": .string(demoThreadId),
+                "title": .string("maludex live sync"),
+                "preview": .string("Desktop updates now refresh automatically on iPhone."),
+                "cwd": .string(selectedProjectPath),
+                "updatedAt": .number(Date().timeIntervalSince1970)
+            ])!,
+            ChatThreadOption(json: [
+                "id": .string("019debd0-b9a1-79b1-97a0-history"),
+                "title": .string("Release notes"),
+                "preview": .string("Prepare the v0.7.x release summary."),
+                "cwd": .string(selectedProjectPath),
+                "updatedAt": .number(Date().timeIntervalSince1970 - 5000)
+            ])!
+        ]
+        promptQueue = [
+            PromptQueueItem(json: [
+                "id": .string("queue-demo-1"),
+                "threadId": .string(demoThreadId),
+                "promptPreview": .string("Regenerate README media from the real simulator"),
+                "promptBytes": .number(58),
+                "attachmentCount": .number(0),
+                "createdAt": .string("2026-05-05T00:00:00Z")
+            ])!,
+            PromptQueueItem(json: [
+                "id": .string("queue-demo-2"),
+                "threadId": .string(demoThreadId),
+                "promptPreview": .string("Summarize the security defaults"),
+                "promptBytes": .number(39),
+                "attachmentCount": .number(1),
+                "createdAt": .string("2026-05-05T00:01:00Z")
+            ])!
+        ]
+        approvals = []
+        diagnostics = BridgeDiagnostics(json: [
+            "bridgeVersion": .string("0.7.3"),
+            "protocolVersion": .number(1),
+            "minClientProtocolVersion": .number(1),
+            "host": .string("100.75.40.51"),
+            "port": .number(8765),
+            "usesTLS": .bool(false),
+            "tokenFileValid": .bool(true),
+            "codexRunning": .bool(true),
+            "connectedClient": .bool(true),
+            "eventBufferSize": .number(42),
+            "eventReplayLimit": .number(500),
+            "activeTurnCount": .number(1),
+            "promptQueueCount": .number(2),
+            "pendingApprovalCount": .number(0),
+            "mobileHandoffMaxEntries": .number(200),
+            "projectRootCount": .number(2),
+            "resumedThreadCount": .number(4),
+            "uptimeSeconds": .number(738),
+            "activeTurns": .array([
+                .object([
+                    "threadId": .string(demoThreadId),
+                    "turnId": .string(demoTurnId)
+                ])
+            ]),
+            "pendingApprovals": .array([])
+        ])
+        transcriptStore.replace(with: [
+            TranscriptEntry(
+                role: .system,
+                text: "Actual Simulator demo mode: this is the real maludex chat UI running in Xcode's iOS Simulator.",
+                threadId: demoThreadId,
+                createdAt: Date(timeIntervalSinceNow: -180)
+            ),
+            TranscriptEntry(
+                role: .user,
+                text: "The GitHub demo looked fake. Replace it with a real Xcode Simulator recording.",
+                attachments: [
+                    TranscriptAttachment(
+                        kind: .image,
+                        filename: "simulator-request.png",
+                        mimeType: "image/png",
+                        byteCount: 1827132
+                    )
+                ],
+                threadId: demoThreadId,
+                turnId: demoTurnId,
+                createdAt: Date(timeIntervalSinceNow: -120)
+            ),
+            TranscriptEntry(
+                role: .assistant,
+                text: "Agreed. I am building the app, launching it in Simulator, and recording the real SwiftUI interface with simctl.",
+                isStreaming: true,
+                threadId: demoThreadId,
+                turnId: demoTurnId,
+                createdAt: Date(timeIntervalSinceNow: -80)
+            )
+        ])
+        transcript = transcriptStore.entries
+        events.insert(BridgeEvent(title: "bridge.ready", detail: "demo UI connected"), at: 0)
+    }
+
+    private func startDemoPlayback() {
+        demoPlaybackTask?.cancel()
+        demoPlaybackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 18_000_000_000)
+            guard let self, self.isDemoMode else { return }
+            self.loadConnectedDemoState()
+
+            try? await Task.sleep(nanoseconds: 9_000_000_000)
+            guard !Task.isCancelled, self.isDemoMode else { return }
+            self.transcriptStore.appendAssistantDelta(
+                self.threadId,
+                turnId: "turn-demo-live",
+                text: "\n\nThe iPhone transcript also performs periodic desktop history catch-up, so stale desktop updates appear without reopening the chat."
+            )
+            self.publishTranscript()
+
+            try? await Task.sleep(nanoseconds: 9_000_000_000)
+            guard !Task.isCancelled, self.isDemoMode else { return }
+            self.approvals = [
+                ApprovalRequest(
+                    id: "approval-demo-1",
+                    method: "item/commandExecution/requestApproval",
+                    params: [
+                        "command": .string("./scripts/create-demo-video.sh"),
+                        "cwd": .string(self.selectedProjectPath)
+                    ]
+                )
+            ]
+            self.diagnostics = BridgeDiagnostics(json: [
+                "bridgeVersion": .string("0.7.3"),
+                "protocolVersion": .number(1),
+                "minClientProtocolVersion": .number(1),
+                "host": .string("100.75.40.51"),
+                "port": .number(8765),
+                "usesTLS": .bool(false),
+                "tokenFileValid": .bool(true),
+                "codexRunning": .bool(true),
+                "connectedClient": .bool(true),
+                "eventBufferSize": .number(48),
+                "eventReplayLimit": .number(500),
+                "activeTurnCount": .number(1),
+                "promptQueueCount": .number(2),
+                "pendingApprovalCount": .number(1),
+                "mobileHandoffMaxEntries": .number(200),
+                "projectRootCount": .number(2),
+                "resumedThreadCount": .number(4),
+                "uptimeSeconds": .number(760),
+                "activeTurns": .array([
+                    .object([
+                        "threadId": .string(self.threadId),
+                        "turnId": .string("turn-demo-live")
+                    ])
+                ]),
+                "pendingApprovals": .array([
+                    .object([
+                        "approvalId": .string("approval-demo-1"),
+                        "method": .string("item/commandExecution/requestApproval")
+                    ])
+                ])
+            ])
+            self.events.insert(BridgeEvent(title: "approval.requested", detail: "create real simulator demo"), at: 0)
+
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard !Task.isCancelled, self.isDemoMode else { return }
+            self.approvals.removeAll()
+            self.activeTurnId = nil
+            self.transcriptStore.finishAssistantTurn(self.threadId, turnId: "turn-demo-live")
+            self.transcriptStore.addSystemMessage("Approved command: real Simulator capture completed.")
+            self.transcriptStore.appendAssistantDelta(
+                self.threadId,
+                turnId: "turn-demo-final",
+                text: "The README media now comes from the installed app running in iOS Simulator, not from handcrafted PNG frames."
+            )
+            self.transcriptStore.finishAssistantTurn(self.threadId, turnId: "turn-demo-final")
+            self.publishTranscript()
+            self.promptDraft = "Ask maludex to publish the real simulator demo..."
+            self.events.insert(BridgeEvent(title: "turn/completed", detail: "simulator media ready"), at: 0)
+
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            guard !Task.isCancelled, self.isDemoMode else { return }
+            self.promptQueue = [
+                PromptQueueItem(json: [
+                    "id": .string("queue-demo-3"),
+                    "threadId": .string(self.threadId),
+                    "promptPreview": .string("Open the PR and verify CI"),
+                    "promptBytes": .number(27),
+                    "attachmentCount": .number(0),
+                    "createdAt": .string("2026-05-05T00:02:00Z")
+                ])!
+            ]
+            self.events.insert(BridgeEvent(title: "prompt.queue.updated", detail: "1 queued"), at: 0)
+        }
     }
 }
 

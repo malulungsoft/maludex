@@ -229,6 +229,54 @@ struct ClientModelsTests {
             normalizedReconnectEventId(current: 42, serverLastEventId: 100) == 42,
             "event cursor should keep current value when the bridge is continuing"
         )
+        require(
+            shouldRefreshActiveChat(
+                isConnected: true,
+                threadId: "thread-1",
+                isLoadingOlderTranscript: false,
+                hasActiveTurn: false,
+                now: Date(timeIntervalSince1970: 100),
+                lastRefreshAt: nil,
+                minimumInterval: 12
+            ),
+            "active desktop chats should refresh automatically after connection"
+        )
+        require(
+            shouldRefreshActiveChat(
+                isConnected: true,
+                threadId: "thread-1",
+                isLoadingOlderTranscript: false,
+                hasActiveTurn: false,
+                now: Date(timeIntervalSince1970: 120),
+                lastRefreshAt: Date(timeIntervalSince1970: 100),
+                minimumInterval: 12
+            ),
+            "active desktop chats should refresh after the sync interval"
+        )
+        require(
+            !shouldRefreshActiveChat(
+                isConnected: true,
+                threadId: "thread-1",
+                isLoadingOlderTranscript: false,
+                hasActiveTurn: true,
+                now: Date(timeIntervalSince1970: 120),
+                lastRefreshAt: Date(timeIntervalSince1970: 100),
+                minimumInterval: 12
+            ),
+            "active mobile turns should keep live streaming events in control"
+        )
+        require(
+            !shouldRefreshActiveChat(
+                isConnected: false,
+                threadId: "thread-1",
+                isLoadingOlderTranscript: false,
+                hasActiveTurn: false,
+                now: Date(timeIntervalSince1970: 120),
+                lastRefreshAt: Date(timeIntervalSince1970: 100),
+                minimumInterval: 12
+            ),
+            "disconnected clients should not request desktop chat refreshes"
+        )
         let approvalNotification = mobileNotificationIntent(
             type: "approval.requested",
             method: "item/commandExecution/requestApproval",

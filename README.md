@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.7.2`
+Current version: `v0.7.3`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs from a polished mobile UI.
 
@@ -22,25 +22,25 @@ The Mac bridge launches `codex app-server` over stdio JSONL and exposes a narrow
 
 ## Status
 
-`v0.7.2` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
+`v0.7.3` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
 
 ## Demo
 
 <p align="center">
-  <img src="media/maludex-simulator-demo.gif" alt="maludex v0.7.2 demo covering QR pairing, bridge health, session controls, searchable transcript, approvals, and bridge switching" width="360">
+  <img src="media/maludex-simulator-demo.gif" alt="maludex v0.7.3 recorded from the real iOS Simulator UI" width="360">
 </p>
 
-A short `v0.7.2` product tour is embedded above. [Watch the MP4 version](media/maludex-simulator-demo.mp4).
+The demo above is recorded from the actual SwiftUI app running in Xcode's iOS Simulator with `scripts/create-demo-video.sh`. It launches the installed app with local demo state and records the real maludex UI with `simctl`, not hand-rendered mock frames. [Watch the MP4 version](media/maludex-simulator-demo.mp4).
 
 ## Screenshots
 
-| Pair bridge | Bridge health | Tune session |
+| Real iPhone UI | Queue and attachments | Approval card |
 | --- | --- | --- |
-| <img src="media/screenshots/pairing.png" alt="maludex pairing payload screen" width="160"> | <img src="media/screenshots/connected-home.png" alt="maludex connected home screen" width="160"> | <img src="media/screenshots/session-controls.png" alt="maludex project picker and session controls" width="160"> |
+| <img src="media/screenshots/live-chat.png" alt="maludex real SwiftUI chat captured in iOS Simulator" width="160"> | <img src="media/screenshots/prompt-queue.png" alt="maludex prompt queue and attachment preview captured in iOS Simulator" width="160"> | <img src="media/screenshots/approval-card.png" alt="maludex approval request card captured in iOS Simulator" width="160"> |
 
-| Search transcript | Approve command | Switch Macs |
+| Desktop sync | Completion | Composer |
 | --- | --- | --- |
-| <img src="media/screenshots/streaming-turn.png" alt="maludex searchable transcript and prompt queue on iPhone" width="160"> | <img src="media/screenshots/approval-card.png" alt="maludex approval request card for a command" width="160"> | <img src="media/screenshots/bridge-switcher.png" alt="maludex saved Mac bridge switcher and Control Center status" width="160"> |
+| <img src="media/screenshots/desktop-sync.png" alt="maludex desktop transcript sync captured in iOS Simulator" width="160"> | <img src="media/screenshots/completion.png" alt="maludex completed simulator recording turn captured in iOS Simulator" width="160"> | <img src="media/screenshots/composer.png" alt="maludex prompt composer captured in iOS Simulator" width="160"> |
 
 ## Features
 
@@ -288,7 +288,7 @@ Switching bridges closes the current WebSocket, restores that Mac's saved local 
 - `scripts/install-launch-agent.sh`: macOS LaunchAgent installer.
 - `scripts/build-control-center-app.sh`: builds or installs the macOS Control Center `.app` bundle.
 - `scripts/configure-tailscale-bridge.sh`: private external access setup through Tailscale.
-- `scripts/create-demo-video.sh`: renders the README product-tour screenshots and rebuilds the GIF and MP4.
+- `scripts/create-demo-video.sh`: builds the iOS app, launches it in Xcode's iOS Simulator, records the real UI with `simctl`, and rebuilds README screenshots, GIF, and MP4.
 
 ## Development
 
@@ -314,14 +314,13 @@ Rebuild the iPhone app from Xcode after pulling iOS changes.
 Release checks and GitHub tag publishing are documented in
 [docs/release.md](docs/release.md).
 
-To rebuild the README screenshots, GIF, and MP4 product tour:
+To rebuild the README screenshots, GIF, and MP4 from the real iOS Simulator UI:
 
 ```bash
 ./scripts/create-demo-video.sh
 ```
 
-Set `MALUDEX_DEMO_SKIP_RENDER=1` to rebuild only the GIF/MP4 from existing
-PNG files in `media/screenshots`.
+Set `MALUDEX_DEMO_DEVICE` to choose a different installed Simulator device, for example `MALUDEX_DEMO_DEVICE="iPhone 17 Pro Max" ./scripts/create-demo-video.sh`.
 
 Swift model tests can be compiled and run without opening Xcode:
 

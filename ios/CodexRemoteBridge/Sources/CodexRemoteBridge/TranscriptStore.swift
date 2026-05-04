@@ -108,6 +108,17 @@ final class TranscriptStore {
         entries = newEntries
     }
 
+    @discardableResult
+    func replaceIfChanged(with newEntries: [TranscriptEntry]) -> Bool {
+        let currentKeys = entries.map { identityKey(for: $0) }
+        let nextKeys = newEntries.map { identityKey(for: $0) }
+        guard currentKeys != nextKeys else {
+            return false
+        }
+        entries = newEntries
+        return true
+    }
+
     func prepend(_ newEntries: [TranscriptEntry]) {
         let existingKeys = Set(entries.map { identityKey(for: $0) })
         let uniqueEntries = newEntries.filter { !existingKeys.contains(identityKey(for: $0)) }

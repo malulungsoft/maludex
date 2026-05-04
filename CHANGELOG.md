@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.3 - 2026-05-05
+
+- Replace the README demo media pipeline with a real Xcode iOS Simulator recording of the installed SwiftUI app.
+- Add an iPhone demo scenario that exercises the actual maludex chat UI, prompt queue, attachment preview, streaming state, and approval card.
+- Refresh README screenshots from captured Simulator video frames instead of hand-rendered mock images.
+- Improve iPhone transcript catch-up so foregrounding or heartbeat checks refresh completed desktop chat updates without reopening the thread.
+
 ## 0.7.2 - 2026-05-05
 
 - Fix macOS Control Center repair so GUI-launched doctor commands preserve Homebrew/Node tool paths for LaunchAgent reinstall.
