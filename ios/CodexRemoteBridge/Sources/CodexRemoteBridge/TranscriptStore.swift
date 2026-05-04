@@ -108,6 +108,12 @@ final class TranscriptStore {
         entries = newEntries
     }
 
+    func prepend(_ newEntries: [TranscriptEntry]) {
+        let existingKeys = Set(entries.map { identityKey(for: $0) })
+        let uniqueEntries = newEntries.filter { !existingKeys.contains(identityKey(for: $0)) }
+        entries = uniqueEntries + entries
+    }
+
     func appendAssistantDelta(_ threadId: String, turnId: String, text: String) {
         if let index = entries.lastIndex(where: {
             $0.role == .assistant && $0.threadId == threadId && $0.turnId == turnId && $0.isStreaming
@@ -134,5 +140,16 @@ final class TranscriptStore {
             return
         }
         entries[index].isStreaming = false
+    }
+
+    private func identityKey(for entry: TranscriptEntry) -> String {
+        [
+            entry.role.rawValue,
+            entry.threadId ?? "",
+            entry.turnId ?? "",
+            String(entry.createdAt.timeIntervalSince1970),
+            entry.text,
+            entry.attachments.map { "\($0.kind.rawValue):\($0.filename):\($0.path ?? "")" }.joined(separator: "|")
+        ].joined(separator: "\t")
     }
 }

@@ -124,6 +124,15 @@ export type MobileMessage =
       autoCompactTokenLimit?: number;
       transcriptLimit?: number;
       transcriptByteLimit?: number;
+      turnLimit?: number;
+    }
+  | {
+      id?: string;
+      type: "chat.history";
+      threadId: string;
+      cursor?: string;
+      limit?: number;
+      transcriptByteLimit?: number;
     }
   | {
       id?: string;

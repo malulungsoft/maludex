@@ -61,6 +61,8 @@ final class BridgeClient: ObservableObject {
     @Published private(set) var projectRoots: [ProjectRootOption] = []
     @Published private(set) var models: [CodexModelOption] = []
     @Published private(set) var chats: [ChatThreadOption] = []
+    @Published private(set) var isLoadingOlderTranscript = false
+    @Published private(set) var hasOlderTranscript = false
     @Published private(set) var hasSavedPairing = false
     @Published private(set) var savedPairingLabel: String?
     @Published private(set) var savedBridges: [SavedBridge] = []
@@ -131,6 +133,11 @@ final class BridgeClient: ObservableObject {
 
     private var pairing: Pairing?
     private var task: URLSessionWebSocketTask?
+    private var reconnectTask: Task<Void, Never>?
+    private var heartbeatTask: Task<Void, Never>?
+    private var reconnectAttempt = 0
+    private var manuallyDisconnected = false
+    private var transcriptCursor: String?
     private var nextId = 1
     private var lastEventId = 0
     private let transcriptStore = TranscriptStore()
@@ -144,7 +151,9 @@ final class BridgeClient: ObservableObject {
     }
 
     func connect(pairing: Pairing) {
-        disconnect()
+        manuallyDisconnected = false
+        cancelReconnect()
+        closeSocket(setOffline: true)
         self.pairing = pairing
         do {
             try stateStore.savePairing(pairing)
@@ -163,7 +172,7 @@ final class BridgeClient: ObservableObject {
         task.resume()
         connectionState = .connecting
         appendEvent("bridge", "connecting to \(pairing.host):\(pairing.port)")
-        receiveLoop()
+        receiveLoop(for: task)
     }
 
     func connectSavedPairingIfAvailable() {
@@ -179,6 +188,16 @@ final class BridgeClient: ObservableObject {
         } catch {
             lastError = error.localizedDescription
             refreshSavedPairingState()
+        }
+    }
+
+    func resumeConnectionIfNeeded() {
+        if connectionState == .connected {
+            sendPing()
+            return
+        }
+        if connectionState == .offline || connectionState == .failed {
+            connectSavedPairingIfAvailable()
         }
     }
 
@@ -202,8 +221,9 @@ final class BridgeClient: ObservableObject {
     }
 
     func disconnect() {
-        task?.cancel(with: .goingAway, reason: nil)
-        task = nil
+        manuallyDisconnected = true
+        cancelReconnect()
+        closeSocket(setOffline: true)
         connectionState = .offline
         approvals.removeAll()
     }
@@ -227,6 +247,9 @@ final class BridgeClient: ObservableObject {
         autoCompactTokenLimit = 120000
         threadId = ""
         lastEventId = 0
+        transcriptCursor = nil
+        hasOlderTranscript = false
+        isLoadingOlderTranscript = false
         projects.removeAll()
         projectRoots.removeAll()
         models.removeAll()
@@ -346,16 +369,40 @@ final class BridgeClient: ObservableObject {
     }
 
     func openChat(threadId: String) {
+        transcriptCursor = nil
+        hasOlderTranscript = false
+        isLoadingOlderTranscript = false
         var body: [String: JSONValue] = [
             "id": .string(nextMessageId(prefix: "ios-open-chat")),
             "type": .string("chat.open"),
-            "threadId": .string(threadId)
+            "threadId": .string(threadId),
+            "turnLimit": .number(30),
+            "transcriptByteLimit": .number(768 * 1024)
         ]
         if !selectedModel.isEmpty {
             body["model"] = .string(selectedModel)
         }
         appendSessionSettings(to: &body, includeAutoCompact: true)
         send(body)
+    }
+
+    func loadOlderTranscript() {
+        guard !isLoadingOlderTranscript,
+              hasOlderTranscript,
+              let transcriptCursor,
+              !threadId.isEmpty,
+              connectionState == .connected else {
+            return
+        }
+        isLoadingOlderTranscript = true
+        send([
+            "id": .string(nextMessageId(prefix: "ios-chat-history")),
+            "type": .string("chat.history"),
+            "threadId": .string(threadId),
+            "cursor": .string(transcriptCursor),
+            "limit": .number(30),
+            "transcriptByteLimit": .number(768 * 1024)
+        ])
     }
 
     func compactThread() {
@@ -460,9 +507,14 @@ final class BridgeClient: ObservableObject {
         }
     }
 
-    private func send(_ body: [String: JSONValue]) {
-        guard let task else {
-            lastError = "Bridge is not connected."
+    private func send(_ body: [String: JSONValue], reportErrors: Bool = true) {
+        guard let task, connectionState == .connected else {
+            if reportErrors {
+                lastError = connectionState == .connecting ? "Bridge is still connecting." : "Bridge is not connected."
+            }
+            if !manuallyDisconnected {
+                scheduleReconnect()
+            }
             return
         }
 
@@ -471,30 +523,112 @@ final class BridgeClient: ObservableObject {
             task.send(.data(data)) { [weak self] error in
                 guard let error else { return }
                 Task { @MainActor in
-                    self?.lastError = error.localizedDescription
+                    self?.handleConnectionFailure(error, reportError: reportErrors)
                 }
             }
         } catch {
-            lastError = error.localizedDescription
+            if reportErrors {
+                lastError = error.localizedDescription
+            }
         }
     }
 
-    private func receiveLoop() {
-        task?.receive { [weak self] result in
+    private func receiveLoop(for currentTask: URLSessionWebSocketTask) {
+        currentTask.receive { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
+                guard self.task === currentTask else {
+                    return
+                }
                 switch result {
                 case .success(let message):
                     self.handle(message)
-                    self.receiveLoop()
+                    self.receiveLoop(for: currentTask)
                 case .failure(let error):
-                    if self.connectionState != .offline {
-                        self.connectionState = .failed
-                        self.lastError = error.localizedDescription
-                    }
+                    self.handleConnectionFailure(error, reportError: false)
                 }
             }
         }
+    }
+
+    private func handleConnectionFailure(_ error: Error, reportError: Bool) {
+        guard !manuallyDisconnected else {
+            return
+        }
+        closeSocket(setOffline: false)
+        connectionState = .failed
+        approvals.removeAll()
+        isLoadingOlderTranscript = false
+        appendEvent("bridge", "connection lost: \(error.localizedDescription)")
+        if reportError {
+            lastError = error.localizedDescription
+        }
+        scheduleReconnect()
+    }
+
+    private func closeSocket(setOffline: Bool) {
+        stopHeartbeat()
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
+        if setOffline {
+            connectionState = .offline
+        }
+    }
+
+    private func scheduleReconnect() {
+        guard !manuallyDisconnected,
+              reconnectTask == nil,
+              pairing != nil || hasSavedPairing else {
+            return
+        }
+        let delay = min(pow(2.0, Double(min(reconnectAttempt, 4))), 30.0)
+        reconnectAttempt += 1
+        appendEvent("bridge", "reconnecting in \(Int(delay))s")
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            await MainActor.run {
+                guard let self else { return }
+                self.reconnectTask = nil
+                guard !self.manuallyDisconnected else { return }
+                if let pairing = self.pairing {
+                    self.connect(pairing: pairing)
+                } else {
+                    self.connectSavedPairingIfAvailable()
+                }
+            }
+        }
+    }
+
+    private func cancelReconnect() {
+        reconnectTask?.cancel()
+        reconnectTask = nil
+    }
+
+    private func startHeartbeat() {
+        stopHeartbeat()
+        heartbeatTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                await MainActor.run {
+                    self?.sendPing()
+                }
+            }
+        }
+    }
+
+    private func stopHeartbeat() {
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+    }
+
+    private func sendPing() {
+        guard connectionState == .connected else {
+            return
+        }
+        send([
+            "id": .string(nextMessageId(prefix: "ios-ping")),
+            "type": .string("ping")
+        ], reportErrors: false)
     }
 
     private func handle(_ message: URLSessionWebSocketTask.Message) {
@@ -517,6 +651,9 @@ final class BridgeClient: ObservableObject {
             switch type {
             case "bridge.ready":
                 connectionState = .connected
+                reconnectAttempt = 0
+                cancelReconnect()
+                startHeartbeat()
                 appendEvent("bridge", "ready")
                 refreshProjects()
                 refreshModels()
@@ -537,6 +674,10 @@ final class BridgeClient: ObservableObject {
 
     private func handleResponse(_ object: [String: JSONValue]) {
         if case .bool(false) = object["ok"] {
+            if let id = object["id"]?.stringValue,
+               id.hasPrefix("ios-chat-history") {
+                isLoadingOlderTranscript = false
+            }
             lastError = object["error"]?.description
             return
         }
@@ -560,6 +701,13 @@ final class BridgeClient: ObservableObject {
             }
             if id.hasPrefix("ios-open-chat") {
                 handleChatOpened(object)
+                return
+            }
+            if id.hasPrefix("ios-chat-history") {
+                handleChatHistory(object)
+                return
+            }
+            if id.hasPrefix("ios-ping") {
                 return
             }
             if id.hasPrefix("ios-subagent") {
@@ -661,6 +809,9 @@ final class BridgeClient: ObservableObject {
             guard let object = value.objectValue else { return nil }
             return RemoteTranscriptEntry(json: object)?.transcriptEntry
         } ?? []
+        transcriptCursor = result["transcriptCursor"]?.stringValue
+        hasOlderTranscript = result["hasOlderTranscript"]?.boolValue ?? (transcriptCursor != nil)
+        isLoadingOlderTranscript = false
         if let truncation = result["transcriptTruncation"]?.objectValue,
            truncation["truncated"]?.boolValue == true {
             let dropped = Int(truncation["droppedEntries"]?.numberValue ?? 0)
@@ -676,6 +827,28 @@ final class BridgeClient: ObservableObject {
         transcriptStore.replace(with: entries)
         publishTranscript()
         appendEvent("chat", "opened \(id)")
+    }
+
+    private func handleChatHistory(_ object: [String: JSONValue]) {
+        defer {
+            isLoadingOlderTranscript = false
+        }
+        guard let result = object["result"]?.objectValue else {
+            hasOlderTranscript = false
+            transcriptCursor = nil
+            return
+        }
+        let entries: [TranscriptEntry] = result["transcript"]?.arrayValue?.compactMap { value in
+            guard let object = value.objectValue else { return nil }
+            return RemoteTranscriptEntry(json: object)?.transcriptEntry
+        } ?? []
+        transcriptCursor = result["transcriptCursor"]?.stringValue
+        hasOlderTranscript = result["hasOlderTranscript"]?.boolValue ?? (transcriptCursor != nil)
+        if !entries.isEmpty {
+            transcriptStore.prepend(entries)
+            publishTranscript()
+        }
+        appendEvent("chat", "loaded \(entries.count) older items")
     }
 
     private func handleSubagentStarted(_ object: [String: JSONValue]) {
@@ -801,6 +974,9 @@ final class BridgeClient: ObservableObject {
         lastEventId = snapshot.lastEventId
         transcriptStore.replace(with: snapshot.transcript)
         transcript = transcriptStore.entries
+        transcriptCursor = nil
+        hasOlderTranscript = false
+        isLoadingOlderTranscript = false
         activeBridgeId = snapshot.activeBridgeId
         savedBridges = stateStore.savedBridges()
         suppressPersistence = false
