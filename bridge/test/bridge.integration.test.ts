@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -197,7 +197,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.4.4",
+      bridgeVersion: "0.5.0",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -298,7 +298,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.4.4"
+    bridgeVersion: "0.5.0"
   });
 
   ws.send(
@@ -1188,6 +1188,88 @@ test("queues prompts while a turn is active and starts them in reordered order",
   expect(startedQueued.message).toMatchObject({ method: "turn/start", params: { threadId: "thread-1" } });
 
   ws.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("persists queued prompts across bridge restart and resumes them after mobile reconnect", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const reportFile = path.join(temp, "mock-report.jsonl");
+  const promptQueueFile = path.join(temp, "prompt-queue.json");
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    promptQueueFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_REPORT_FILE: reportFile,
+      MOCK_CODEX_RECENT_CWD: temp
+    },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const ws = await connect(`ws://${address.host}:${address.port}`, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(JSON.stringify({ id: "turn-active-persist", type: "turn.start", threadId: "thread-1", prompt: "running before restart" }));
+  await waitForMessage(ws, (message) => message.id === "turn-active-persist");
+
+  ws.send(JSON.stringify({ id: "turn-queued-persist", type: "turn.start", threadId: "thread-1", prompt: "queued survives restart" }));
+  const queued = await waitForMessage<Record<string, unknown>>(ws, (message) => message.id === "turn-queued-persist");
+  const queueItem = (queued.result as Record<string, unknown>).queueItem as Record<string, unknown>;
+  expect(queueItem.promptPreview).toBe("queued survives restart");
+
+  await server.stop();
+  ws.close();
+  const mode = (await stat(promptQueueFile)).mode & 0o777;
+  expect(mode).toBe(0o600);
+
+  const restarted = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    promptQueueFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_REPORT_FILE: reportFile,
+      MOCK_CODEX_RECENT_CWD: temp
+    },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(restarted);
+
+  await restarted.start();
+  const restartedAddress = restarted.address();
+  const replayWs = await connect(`ws://${restartedAddress.host}:${restartedAddress.port}`, token);
+  await waitForMessage(replayWs, (message) => message.type === "bridge.ready");
+  const restored = await waitForMessage<Record<string, unknown>>(
+    replayWs,
+    (message) => message.type === "prompt.queue.updated" && message.count === 1
+  );
+  const restoredQueue = restored.queue as Array<Record<string, unknown>>;
+  expect(restoredQueue[0]?.id).toBe(queueItem.id);
+
+  const started = await waitForMessage<Record<string, unknown>>(
+    replayWs,
+    (message) => message.type === "prompt.queue.started"
+  );
+  expect(started.queueItem).toMatchObject({ id: queueItem.id, promptPreview: "queued survives restart" });
+
+  const queuedStart = await waitForReport(
+    reportFile,
+    (entry) => entry.message.method === "turn/start" && JSON.stringify(entry.message).includes("queued survives restart")
+  );
+  expect(queuedStart.message).toMatchObject({ method: "turn/start", params: { threadId: "thread-1" } });
+
+  replayWs.close();
   await rm(temp, { recursive: true, force: true });
 });
 

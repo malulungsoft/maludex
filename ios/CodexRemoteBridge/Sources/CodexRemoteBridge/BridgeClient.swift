@@ -1,4 +1,5 @@
 import Foundation
+import UserNotifications
 
 struct BridgeEvent: Identifiable, Equatable {
     let id = UUID()
@@ -149,12 +150,14 @@ final class BridgeClient: ObservableObject {
     private var lastEventId = 0
     private let transcriptStore = TranscriptStore()
     private let stateStore: DeviceStateStore
+    private let notificationScheduler = LocalNotificationScheduler()
     private var suppressPersistence = false
 
     init(stateStore: DeviceStateStore = DeviceStateStore()) {
         self.stateStore = stateStore
         restorePersistedState()
         refreshSavedPairingState()
+        notificationScheduler.requestAuthorizationIfNeeded()
     }
 
     func connect(pairing: Pairing) {
@@ -739,6 +742,14 @@ final class BridgeClient: ObservableObject {
                     lastError = warning
                 }
                 let version = object["bridgeVersion"]?.stringValue ?? "unknown"
+                if let serverLastEventId = object["lastEventId"]?.intValue {
+                    let normalized = normalizedReconnectEventId(current: lastEventId, serverLastEventId: serverLastEventId)
+                    if normalized != lastEventId {
+                        lastEventId = normalized
+                        persistSnapshot()
+                        appendEvent("bridge", "event cursor reset")
+                    }
+                }
                 appendEvent("bridge", "ready \(version)")
                 refreshProjects()
                 refreshModels()
@@ -932,6 +943,7 @@ final class BridgeClient: ObservableObject {
     private func handlePromptQueueFailed(_ object: [String: JSONValue]) {
         let message = object["message"]?.stringValue ?? "Queued prompt failed."
         lastError = userFacingBridgeError(["message": .string(message)])
+        scheduleNotification(type: "prompt.queue.failed", method: nil, params: ["message": .string(message)], approvalId: nil)
         handlePromptQueueUpdated(object)
     }
 
@@ -1041,6 +1053,7 @@ final class BridgeClient: ObservableObject {
         guard let params = object["params"]?.objectValue else {
             return
         }
+        scheduleNotification(type: "codex.event", method: method, params: params, approvalId: nil)
 
         if method == "turn/started",
            let eventThreadId = params["threadId"]?.stringValue,
@@ -1106,6 +1119,7 @@ final class BridgeClient: ObservableObject {
         }
         approvals.append(ApprovalRequest(id: approvalId, method: method, params: params))
         appendEvent("approval", method)
+        scheduleNotification(type: "approval.requested", method: method, params: params, approvalId: approvalId)
     }
 
     private func setActiveThread(_ id: String) {
@@ -1136,6 +1150,13 @@ final class BridgeClient: ObservableObject {
     private func appendEvent(_ title: String, _ detail: String) {
         events.insert(BridgeEvent(title: title, detail: detail), at: 0)
         events = Array(events.prefix(100))
+    }
+
+    private func scheduleNotification(type: String, method: String?, params: [String: JSONValue], approvalId: String?) {
+        guard let intent = mobileNotificationIntent(type: type, method: method, params: params, approvalId: approvalId) else {
+            return
+        }
+        notificationScheduler.schedule(intent)
     }
 
     private func nextMessageId(prefix: String = "ios") -> String {
@@ -1193,6 +1214,28 @@ final class BridgeClient: ObservableObject {
             lastEventId: lastEventId,
             transcript: transcriptStore.entries
         )
+    }
+}
+
+private final class LocalNotificationScheduler {
+    private let center = UNUserNotificationCenter.current()
+    private var requestedAuthorization = false
+
+    func requestAuthorizationIfNeeded() {
+        guard !requestedAuthorization else {
+            return
+        }
+        requestedAuthorization = true
+        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    func schedule(_ intent: MobileNotificationIntent) {
+        requestAuthorizationIfNeeded()
+        let content = UNMutableNotificationContent()
+        content.title = intent.title
+        content.body = intent.body
+        content.sound = .default
+        center.add(UNNotificationRequest(identifier: intent.identifier, content: content, trigger: nil))
     }
 }
 

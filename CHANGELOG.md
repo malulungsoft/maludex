@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 - 2026-05-05
+
+- Persist queued iPhone prompts to a local `0600` queue file and restore them after bridge restarts.
+- Resume restored queued turns after an authenticated mobile reconnect, while keeping bridge logs metadata-only.
+- Reset the iPhone replay cursor safely when a restarted bridge reports a lower event id.
+- Add local iOS notifications for approval requests, completed turns, and queued prompt failures.
+- Document that the queue state can contain prompt bodies and attachment references and must stay private.
+
 ## 0.4.4 - 2026-05-05
 
 - Fix the iPhone chat screen layout on large phones and larger text settings by constraining the project header, transcript bubbles, and prompt composer controls to the viewport.

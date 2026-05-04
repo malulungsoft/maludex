@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.4.4`
+Current version: `v0.5.0`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs.
 
@@ -59,6 +59,7 @@ A short tour captured from the real SwiftUI app running in iOS Simulator is embe
 - The bridge defaults to `approvalPolicy: "on-request"` and `sandbox: "read-only"`.
 - The mobile app can request only `read-only` or `workspace-write`; it does not expose `danger-full-access` or `approvalPolicy: "never"`.
 - Prompt bodies are sent to Codex but are not logged by the bridge by default.
+- Queued mobile prompts are persisted locally so they can resume after a bridge restart. That queue file can contain prompt bodies and attachment references; keep it private, keep its `0600` permissions, and never commit or share it.
 - Mobile attachments are copied into the selected workspace under `.codex-mobile-attachments/` with `0600` file permissions. Treat those files as local project data.
 - A paired and unlocked iPhone should be treated as a trusted device. It can view recent transcript content and respond to approval requests.
 - Plain `ws://` has no transport encryption by itself. Use localhost or Tailscale. Add TLS and stronger operational controls before considering any public endpoint.
@@ -270,6 +271,7 @@ swiftc -parse-as-library \
 Do not commit:
 
 - `~/.codex-iphone-remote-bridge/token`
+- `~/.codex-iphone-remote-bridge/prompt-queue.json`
 - QR images or copied pairing payloads
 - `.codex-mobile-attachments/`
 - Xcode `xcuserdata/` and `*.xcuserstate`

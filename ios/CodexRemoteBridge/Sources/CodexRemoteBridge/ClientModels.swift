@@ -285,7 +285,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.4.4"
+let maludexClientVersion = "0.5.0"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
@@ -345,6 +345,68 @@ func userFacingConnectionError(_ message: String) -> String {
     }
 
     return message
+}
+
+func normalizedReconnectEventId(current: Int, serverLastEventId: Int) -> Int {
+    serverLastEventId < current ? max(0, serverLastEventId) : current
+}
+
+struct MobileNotificationIntent: Equatable {
+    let identifier: String
+    let title: String
+    let body: String
+}
+
+func mobileNotificationIntent(
+    type: String,
+    method: String?,
+    params: [String: JSONValue],
+    approvalId: String?
+) -> MobileNotificationIntent? {
+    switch type {
+    case "approval.requested":
+        let id = approvalId ?? "approval"
+        return MobileNotificationIntent(
+            identifier: "approval-\(id)",
+            title: "Approval needed",
+            body: "\(approvalTitle(for: method)) is waiting on your iPhone."
+        )
+    case "codex.event":
+        guard method == "turn/completed" else {
+            return nil
+        }
+        let thread = params["threadId"]?.stringValue.map(shortThreadLabel) ?? "current chat"
+        return MobileNotificationIntent(
+            identifier: "turn-completed-\(thread)-\(Int(Date().timeIntervalSince1970))",
+            title: "Turn finished",
+            body: "maludex finished a turn in \(thread)."
+        )
+    case "prompt.queue.failed":
+        return MobileNotificationIntent(
+            identifier: "queue-failed-\(Int(Date().timeIntervalSince1970))",
+            title: "Queued prompt failed",
+            body: params["message"]?.stringValue ?? "A queued prompt could not be started."
+        )
+    default:
+        return nil
+    }
+}
+
+private func approvalTitle(for method: String?) -> String {
+    switch method {
+    case "item/commandExecution/requestApproval", "execCommandApproval":
+        return "Command approval"
+    case "item/fileChange/requestApproval", "applyPatchApproval":
+        return "File change approval"
+    case "item/permissions/requestApproval":
+        return "Permission approval"
+    default:
+        return "Approval request"
+    }
+}
+
+private func shortThreadLabel(_ threadId: String) -> String {
+    threadId.count <= 8 ? threadId : String(threadId.prefix(8))
 }
 
 func messageRelativeTime(from date: Date, now: Date = Date()) -> String {

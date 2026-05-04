@@ -12,6 +12,7 @@ build/
 *.token
 pairing*.json
 pairing*.txt
+prompt-queue.json
 .env
 .env.*
 !.env.example

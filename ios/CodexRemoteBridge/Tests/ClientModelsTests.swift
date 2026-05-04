@@ -157,6 +157,41 @@ struct ClientModelsTests {
             userFacingConnectionError("The Internet connection appears to be offline.").contains("Mac bridge"),
             "offline connection errors should explain bridge reachability"
         )
+        require(
+            normalizedReconnectEventId(current: 42, serverLastEventId: 3) == 3,
+            "event cursor should reset when the bridge restarts with a lower event id"
+        )
+        require(
+            normalizedReconnectEventId(current: 42, serverLastEventId: 100) == 42,
+            "event cursor should keep current value when the bridge is continuing"
+        )
+        let approvalNotification = mobileNotificationIntent(
+            type: "approval.requested",
+            method: "item/commandExecution/requestApproval",
+            params: [:],
+            approvalId: "approval-1"
+        )
+        require(approvalNotification?.title == "Approval needed", "approval requests should create a local notification")
+        require(approvalNotification?.body.contains("Command approval") == true, "approval notification should identify command approvals")
+        let completionNotification = mobileNotificationIntent(
+            type: "codex.event",
+            method: "turn/completed",
+            params: ["threadId": .string("thread-1")],
+            approvalId: nil
+        )
+        require(completionNotification?.title == "Turn finished", "turn completion should create a local notification")
+        let queueFailureNotification = mobileNotificationIntent(
+            type: "prompt.queue.failed",
+            method: nil,
+            params: ["message": .string("Model unavailable")],
+            approvalId: nil
+        )
+        require(queueFailureNotification?.body == "Model unavailable", "queue failures should surface their message")
+        require(
+            mobileNotificationIntent(type: "codex.event", method: "item/agentMessage/delta", params: [:], approvalId: nil) == nil,
+            "streaming deltas should not create local notifications"
+        )
+
         let diagnostics = BridgeDiagnostics(json: [
             "bridgeVersion": .string("0.4.3"),
             "protocolVersion": .number(1),

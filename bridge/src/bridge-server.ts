@@ -1,7 +1,7 @@
 import { createServer, type Server as HttpServer } from "node:http";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import WebSocket, { WebSocketServer } from "ws";
@@ -56,6 +56,7 @@ type QueuedPromptTurn = {
   input: JsonValue[];
   params: JsonObject;
   authoredTurn: MobileAuthoredTurn;
+  sandbox: SafeSandbox;
   promptPreview: string;
   promptBytes: number;
   attachmentCount: number;
@@ -68,7 +69,7 @@ const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
 const MAX_PROMPT_QUEUE_ITEMS = 50;
-const BRIDGE_VERSION = "0.4.4";
+const BRIDGE_VERSION = "0.5.0";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 
@@ -87,6 +88,7 @@ export type BridgeServerOptions = {
   projectRoots?: string[];
   maxAttachmentBytes?: number;
   maxAttachmentsPerTurn?: number;
+  promptQueueFile?: string;
 };
 
 export class BridgeServer {
@@ -115,6 +117,7 @@ export class BridgeServer {
   private readonly projectRoots: string[];
   private readonly maxAttachmentBytes: number;
   private readonly maxAttachmentsPerTurn: number;
+  private readonly promptQueueFile: string;
   private nextEventId = 1;
   private nextPromptQueueId = 1;
   private readonly threadCwds = new Map<string, string>();
@@ -132,6 +135,7 @@ export class BridgeServer {
     this.projectRoots = normalizeProjectRoots(options.projectRoots ?? defaultProjectRoots());
     this.maxAttachmentBytes = options.maxAttachmentBytes ?? 15 * 1024 * 1024;
     this.maxAttachmentsPerTurn = options.maxAttachmentsPerTurn ?? 5;
+    this.promptQueueFile = options.promptQueueFile ?? path.join(path.dirname(options.tokenFile), "prompt-queue.json");
     this.codex = new CodexRpcClient({
       command: options.codexCommand,
       args: options.codexArgs,
@@ -143,6 +147,7 @@ export class BridgeServer {
 
   async start(): Promise<void> {
     this.validateBindHost();
+    this.loadPromptQueues();
     this.codex.on("notification", (message) => this.handleCodexNotification(message));
     this.codex.on("serverRequest", (message) => this.handleCodexServerRequest(message));
     await this.codex.start();
@@ -262,6 +267,8 @@ export class BridgeServer {
         lastEventId: this.lastEventId()
       });
       this.replayEvents(afterEventId);
+      this.emitRestoredPromptQueues();
+      void this.resumeIdlePromptQueues();
     });
 
     ws.on("message", (data) => {
@@ -424,6 +431,7 @@ export class BridgeServer {
           input,
           params,
           authoredTurn,
+          sandbox,
           promptPreview: promptPreview(message.prompt),
           promptBytes,
           attachmentCount
@@ -523,6 +531,7 @@ export class BridgeServer {
     const [item] = located.queue.splice(located.index, 1);
     const toIndex = Math.max(0, Math.min(Math.floor(message.toIndex), located.queue.length));
     located.queue.splice(toIndex, 0, item);
+    this.persistPromptQueues();
     this.emitPromptQueueUpdated(located.threadId);
     this.sendOk(ws, message.id, asJsonValue({
       moved: true,
@@ -544,6 +553,7 @@ export class BridgeServer {
     if (located.queue.length === 0) {
       this.promptQueues.delete(located.threadId);
     }
+    this.persistPromptQueues();
     this.emitPromptQueueUpdated(located.threadId);
     this.sendOk(ws, message.id, asJsonValue({
       cancelled: true,
@@ -858,6 +868,7 @@ export class BridgeServer {
     };
     queue.push(item);
     this.promptQueues.set(options.threadId, queue);
+    this.persistPromptQueues();
     return item;
   }
 
@@ -896,6 +907,22 @@ export class BridgeServer {
     });
   }
 
+  private emitRestoredPromptQueues(): void {
+    for (const [threadId, queue] of this.promptQueues) {
+      if (queue.length > 0) {
+        this.emitPromptQueueUpdated(threadId);
+      }
+    }
+  }
+
+  private async resumeIdlePromptQueues(): Promise<void> {
+    for (const threadId of [...this.promptQueues.keys()]) {
+      if (!this.isThreadBusy(threadId)) {
+        await this.startNextQueuedTurn(threadId);
+      }
+    }
+  }
+
   private async startNextQueuedTurn(threadId: string): Promise<void> {
     if (this.isThreadBusy(threadId)) {
       return;
@@ -913,6 +940,7 @@ export class BridgeServer {
     } else {
       this.promptQueues.set(threadId, queue);
     }
+    this.persistPromptQueues();
     this.emitPromptQueueUpdated(threadId);
 
     this.startingThreads.add(threadId);
@@ -924,6 +952,17 @@ export class BridgeServer {
         promptBytes: next.promptBytes,
         attachmentCount: next.attachmentCount
       });
+      await this.ensureThreadResumed(
+        threadId,
+        {
+          model: next.params.model,
+          approvalPolicy: next.params.approvalPolicy,
+          sandbox: next.sandbox,
+          reasoningEffort: next.params.effort,
+          reasoningSummary: next.params.summary
+        },
+        typeof next.params.cwd === "string" ? next.params.cwd : undefined
+      );
       await this.dispatchTurnStart(threadId, next.params, next.authoredTurn);
       this.emitToMobile({
         type: "prompt.queue.started",
@@ -957,6 +996,56 @@ export class BridgeServer {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  private loadPromptQueues(): void {
+    if (!existsSync(this.promptQueueFile)) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(readFileSync(this.promptQueueFile, "utf8")) as unknown;
+      const queues = promptQueueStoreFromJson(parsed);
+      this.promptQueues.clear();
+      let maxQueueId = 0;
+      for (const [threadId, items] of queues) {
+        if (items.length === 0) {
+          continue;
+        }
+        this.promptQueues.set(threadId, items);
+        for (const item of items) {
+          maxQueueId = Math.max(maxQueueId, numericQueueId(item.id));
+        }
+      }
+      this.nextPromptQueueId = Math.max(this.nextPromptQueueId, maxQueueId + 1);
+      this.logger.info("mobile.prompt_queue_loaded", { promptQueueCount: this.promptQueueCount() });
+    } catch (error) {
+      this.logger.warn("mobile.prompt_queue_load_failed", {
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  private persistPromptQueues(): void {
+    try {
+      mkdirSync(path.dirname(this.promptQueueFile), { recursive: true, mode: 0o700 });
+      const payload = {
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        queues: [...this.promptQueues.entries()].map(([threadId, items]) => ({ threadId, items }))
+      };
+      const tempFile = path.join(
+        path.dirname(this.promptQueueFile),
+        `.${path.basename(this.promptQueueFile)}.${process.pid}.${Date.now()}.tmp`
+      );
+      writeFileSync(tempFile, `${JSON.stringify(payload)}\n`, { mode: 0o600 });
+      chmodSync(tempFile, 0o600);
+      renameSync(tempFile, this.promptQueueFile);
+      chmodSync(this.promptQueueFile, 0o600);
+    } catch (error) {
+      this.logger.warn("mobile.prompt_queue_persist_failed", {
+        message: error instanceof Error ? error.message : String(error)
+      });
     }
   }
 
@@ -2171,6 +2260,64 @@ function publicQueueItem(item: QueuedPromptTurn): JsonObject {
     attachmentCount: item.attachmentCount,
     createdAt: item.createdAt
   };
+}
+
+function promptQueueStoreFromJson(value: unknown): Map<string, QueuedPromptTurn[]> {
+  if (!isRecord(value) || !Array.isArray(value.queues)) {
+    throw new Error("Prompt queue state must contain a queues array.");
+  }
+
+  const queues = new Map<string, QueuedPromptTurn[]>();
+  for (const rawQueue of value.queues) {
+    if (!isRecord(rawQueue) || typeof rawQueue.threadId !== "string" || !Array.isArray(rawQueue.items)) {
+      continue;
+    }
+    const threadId = rawQueue.threadId;
+    const items = rawQueue.items
+      .map((item) => queuedPromptTurnFromJson(item, threadId))
+      .filter((item): item is QueuedPromptTurn => item !== null);
+    if (items.length > 0) {
+      queues.set(threadId, items.slice(0, MAX_PROMPT_QUEUE_ITEMS));
+    }
+  }
+  return queues;
+}
+
+function queuedPromptTurnFromJson(value: unknown, fallbackThreadId: string): QueuedPromptTurn | null {
+  if (!isRecord(value)
+    || typeof value.id !== "string"
+    || !Array.isArray(value.input)
+    || !isRecord(value.params)
+    || !isRecord(value.authoredTurn)
+    || !Array.isArray(value.authoredTurn.input)) {
+    return null;
+  }
+
+  const threadId = typeof value.threadId === "string" && value.threadId ? value.threadId : fallbackThreadId;
+  const authoredThreadId =
+    typeof value.authoredTurn.threadId === "string" && value.authoredTurn.threadId ? value.authoredTurn.threadId : threadId;
+  const authoredTurn: MobileAuthoredTurn = {
+    threadId: authoredThreadId,
+    turnId: typeof value.authoredTurn.turnId === "string" ? value.authoredTurn.turnId : undefined,
+    input: value.authoredTurn.input as JsonValue[]
+  };
+  return {
+    id: value.id,
+    threadId,
+    input: value.input as JsonValue[],
+    params: value.params as JsonObject,
+    authoredTurn,
+    sandbox: safeSandbox(value.sandbox),
+    promptPreview: typeof value.promptPreview === "string" ? value.promptPreview : "Queued prompt",
+    promptBytes: typeof value.promptBytes === "number" && Number.isFinite(value.promptBytes) ? value.promptBytes : 0,
+    attachmentCount: typeof value.attachmentCount === "number" && Number.isFinite(value.attachmentCount) ? value.attachmentCount : 0,
+    createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString()
+  };
+}
+
+function numericQueueId(id: string): number {
+  const match = /^queue-(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
 }
 
 function promptPreview(prompt: string): string {
