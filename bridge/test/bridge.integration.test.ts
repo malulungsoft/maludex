@@ -197,7 +197,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.4.1",
+      bridgeVersion: "0.4.2",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -298,7 +298,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     lastEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.4.1"
+    bridgeVersion: "0.4.2"
   });
 
   ws.send(
@@ -1074,6 +1074,62 @@ test("persists iPhone-authored prompts into reopened desktop chat history", asyn
   const result = reopened.result as Record<string, unknown>;
   const transcript = result.transcript as Array<Record<string, unknown>>;
   expect(transcript).toContainEqual(expect.objectContaining({ role: "user", text: prompt }));
+
+  ws.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("persists iPhone-authored prompts after turn start even before completion", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const reportFile = path.join(temp, "mock-report.jsonl");
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+  const prompt = "완료 전에 데스크톱 히스토리에 남아야 하는 아이폰 지시";
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_REPORT_FILE: reportFile,
+      MOCK_CODEX_RECENT_CWD: temp,
+      MOCK_CODEX_DROP_MOBILE_USER: "1"
+    },
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const ws = await connect(`ws://${address.host}:${address.port}`, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(
+    JSON.stringify({
+      id: "mobile-persist-before-complete",
+      type: "turn.start",
+      threadId: "recent-thread-1",
+      prompt
+    })
+  );
+  await waitForMessage(ws, (message) => message.id === "mobile-persist-before-complete");
+
+  const inject = await waitForReport(reportFile, (entry) => entry.message.method === "thread/inject_items");
+  expect(inject.message).toMatchObject({
+    method: "thread/inject_items",
+    params: {
+      threadId: "recent-thread-1",
+      items: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: prompt }]
+        }
+      ]
+    }
+  });
 
   ws.close();
   await rm(temp, { recursive: true, force: true });

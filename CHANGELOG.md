@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2 - 2026-05-04
+
+- Persist iPhone-authored prompts into Codex desktop thread history as soon as a turn starts, so interrupted or long-running turns remain recoverable without logging raw prompt bodies.
+- Keep bridge logs metadata-only while preserving mobile prompt recovery through Codex thread history and the iPhone's local transcript storage.
+
 ## 0.4.1 - 2026-05-04
 
 - Show relative timestamps on transcript bubbles in the iPhone app.

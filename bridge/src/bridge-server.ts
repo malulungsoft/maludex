@@ -55,7 +55,7 @@ const DEFAULT_CHAT_TRANSCRIPT_BYTE_LIMIT = 768 * 1024;
 const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
-const BRIDGE_VERSION = "0.4.1";
+const BRIDGE_VERSION = "0.4.2";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 
@@ -387,7 +387,14 @@ export class BridgeServer {
     });
     const authoredTurn: MobileAuthoredTurn = { threadId: message.threadId, input };
     this.rememberMobileAuthoredTurn(authoredTurn);
-    const result = await this.codex.request("turn/start", asJsonValue(params));
+    let result: JsonValue;
+    try {
+      result = await this.codex.request("turn/start", asJsonValue(params));
+    } catch (error) {
+      const recoverableTurn = this.takeMobileAuthoredTurn(message.threadId) ?? authoredTurn;
+      void this.persistMobileAuthoredTurn(recoverableTurn);
+      throw error;
+    }
     const turnId = turnIdFromStartResult(result);
     if (turnId) {
       this.activeTurns.set(message.threadId, turnId);
@@ -396,6 +403,8 @@ export class BridgeServer {
         this.mobileAuthoredTurns.set(mobileTurnKey(message.threadId, turnId), authoredTurn);
       }
     }
+    const recoverableTurn = this.takeMobileAuthoredTurn(message.threadId, turnId ?? undefined) ?? authoredTurn;
+    void this.persistMobileAuthoredTurn(recoverableTurn);
     this.sendOk(ws, message.id, result);
   }
 
