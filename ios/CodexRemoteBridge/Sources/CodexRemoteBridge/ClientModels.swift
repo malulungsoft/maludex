@@ -772,6 +772,14 @@ func messageRelativeTime(from date: Date, now: Date = Date()) -> String {
     return "\(months / 12)년 전"
 }
 
+func transcriptEntryCanCollapse(_ entry: TranscriptEntry) -> Bool {
+    !entry.isStreaming && (entry.text.count > 360 || entry.text.split(separator: "\n").count > 8)
+}
+
+func transcriptEntryIsCollapsed(_ entry: TranscriptEntry, userExpanded: Bool, forceExpanded: Bool) -> Bool {
+    transcriptEntryCanCollapse(entry) && !userExpanded && !forceExpanded
+}
+
 struct TranscriptSearchResult: Identifiable, Equatable {
     let entry: TranscriptEntry
     let preview: String

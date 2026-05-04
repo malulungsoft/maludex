@@ -306,6 +306,8 @@ private struct ProjectScreen: View {
     @State private var historyAnchorId: TranscriptEntry.ID?
     @State private var transcriptSearchPresented = false
     @State private var requestedTranscriptSearchTarget: TranscriptEntry.ID?
+    @State private var highlightedTranscriptEntryId: TranscriptEntry.ID?
+    @State private var expandedTranscriptEntryIds: Set<TranscriptEntry.ID> = []
     @State private var canLoadOlderTranscript = false
     @StateObject private var speech = SpeechInputController()
     @FocusState private var promptFocused: Bool
@@ -333,6 +335,8 @@ private struct ProjectScreen: View {
                     VStack(alignment: .leading, spacing: 14) {
                         TranscriptView(
                             entries: bridge.transcript,
+                            highlightedEntryId: highlightedTranscriptEntryId,
+                            expandedEntryIds: expandedTranscriptEntryIds,
                             hasOlder: bridge.hasOlderTranscript,
                             isLoadingOlder: bridge.isLoadingOlderTranscript,
                             loadOlder: {
@@ -394,6 +398,8 @@ private struct ProjectScreen: View {
                     canLoadOlderTranscript = false
                     historyAnchorId = nil
                     requestedTranscriptSearchTarget = nil
+                    highlightedTranscriptEntryId = nil
+                    expandedTranscriptEntryIds.removeAll()
                     showChrome()
                 }
                 .onChange(of: requestedTranscriptSearchTarget) { _, target in
@@ -467,9 +473,17 @@ private struct ProjectScreen: View {
         }
         .sheet(isPresented: $transcriptSearchPresented) {
             TranscriptSearchSheet(entries: bridge.transcript) { entry in
+                expandedTranscriptEntryIds.insert(entry.id)
+                highlightedTranscriptEntryId = entry.id
                 requestedTranscriptSearchTarget = entry.id
                 transcriptSearchPresented = false
                 showChrome()
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_800_000_000)
+                    if highlightedTranscriptEntryId == entry.id {
+                        highlightedTranscriptEntryId = nil
+                    }
+                }
             }
         }
         .fileImporter(isPresented: $fileImporterPresented, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
@@ -1749,6 +1763,8 @@ private struct SubagentSheet: View {
 private struct TranscriptView: View {
     @EnvironmentObject private var bridge: BridgeClient
     let entries: [TranscriptEntry]
+    let highlightedEntryId: TranscriptEntry.ID?
+    let expandedEntryIds: Set<TranscriptEntry.ID>
     let hasOlder: Bool
     let isLoadingOlder: Bool
     let loadOlder: () -> Void
@@ -1785,7 +1801,11 @@ private struct TranscriptView: View {
                             }
                     }
                     ForEach(entries) { entry in
-                        TranscriptBubble(entry: entry)
+                        TranscriptBubble(
+                            entry: entry,
+                            forceExpanded: expandedEntryIds.contains(entry.id),
+                            isHighlighted: highlightedEntryId == entry.id
+                        )
                             .id(entry.id)
                     }
                 }
@@ -1922,6 +1942,8 @@ private struct EmptyTranscriptView: View {
 private struct TranscriptBubble: View {
     @EnvironmentObject private var bridge: BridgeClient
     let entry: TranscriptEntry
+    let forceExpanded: Bool
+    let isHighlighted: Bool
     @State private var expanded = false
 
     var body: some View {
@@ -1933,6 +1955,7 @@ private struct TranscriptBubble: View {
                     .stroke(border, lineWidth: 1)
             )
             .shadow(color: AppPalette.bubbleShadow, radius: 8, x: 0, y: 4)
+            .scaleEffect(isHighlighted ? 1.012 : 1)
             .frame(maxWidth: entry.role == .user ? 320 : .infinity, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: alignment)
             .padding(.leading, entry.role == .user ? 36 : 0)
@@ -2018,11 +2041,11 @@ private struct TranscriptBubble: View {
     }
 
     private var canCollapse: Bool {
-        !entry.isStreaming && (entry.text.count > 360 || entry.text.split(separator: "\n").count > 8)
+        transcriptEntryCanCollapse(entry)
     }
 
     private var isCollapsed: Bool {
-        canCollapse && !expanded
+        transcriptEntryIsCollapsed(entry, userExpanded: expanded, forceExpanded: forceExpanded)
     }
 
     private var alignment: Alignment {
@@ -2052,7 +2075,7 @@ private struct TranscriptBubble: View {
     }
 
     private var border: Color {
-        entry.role == .user ? AppPalette.accent.opacity(0.22) : AppPalette.line
+        isHighlighted ? AppPalette.warning.opacity(0.68) : (entry.role == .user ? AppPalette.accent.opacity(0.22) : AppPalette.line)
     }
 }
 

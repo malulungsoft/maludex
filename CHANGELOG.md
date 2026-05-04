@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Add iPhone transcript search with Korean/English copy, attachment filename matches, and tap-to-scroll results.
+- Expand and briefly highlight long transcript bubbles when opened from iPhone search results.
 
 ## 0.7.0 - 2026-05-05
 

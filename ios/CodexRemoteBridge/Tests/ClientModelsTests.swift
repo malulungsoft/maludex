@@ -141,6 +141,11 @@ struct ClientModelsTests {
         require(textMatches.first?.role == .user, "transcript search should preserve matching entry role")
         require(textMatches.first?.preview.contains("release checklist") == true, "transcript search should expose a readable preview")
         require(transcriptSearchResults(entries: searchableEntries, query: "   ").isEmpty, "empty transcript search should not return results")
+        let longSearchHit = TranscriptEntry(role: .assistant, text: String(repeating: "Search result context. ", count: 40))
+        require(transcriptEntryCanCollapse(longSearchHit), "long transcript entries should collapse by default")
+        require(transcriptEntryIsCollapsed(longSearchHit, userExpanded: false, forceExpanded: false), "long transcript entries should remain collapsed until expanded")
+        require(!transcriptEntryIsCollapsed(longSearchHit, userExpanded: false, forceExpanded: true), "search-selected transcript entries should be forced open")
+        require(!transcriptEntryIsCollapsed(longSearchHit, userExpanded: true, forceExpanded: false), "manually expanded transcript entries should stay open")
 
         let attachment = MobileAttachment(
             kind: .file,
