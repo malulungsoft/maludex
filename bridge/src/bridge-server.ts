@@ -1,9 +1,11 @@
 import { createServer, type Server as HttpServer } from "node:http";
+import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import WebSocket, { WebSocketServer } from "ws";
 import { CapabilityAuthenticator, loadCapabilityTokenFromFile } from "./auth.js";
 import { CodexRpcClient } from "./codex-rpc.js";
@@ -57,6 +59,12 @@ type ProjectSummary = {
   updatedAt?: number;
 };
 
+type DesktopWorkspaceRegistrationOptions = {
+  makeActive?: boolean;
+  promote?: boolean;
+  notifyDesktop?: boolean;
+};
+
 type MobileAuthoredTurn = {
   threadId: string;
   turnId?: string;
@@ -82,11 +90,12 @@ const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
 const MAX_PROMPT_QUEUE_ITEMS = 50;
-const BRIDGE_VERSION = "0.9.5";
+const BRIDGE_VERSION = "0.9.6";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const DESKTOP_WORKSPACE_RECONCILE_INTERVAL_MS = 30 * 1000;
+const execFileAsync = promisify(execFile);
 
 export type BridgeServerOptions = {
   host?: string;
@@ -484,7 +493,11 @@ export class BridgeServer {
     });
     const result = await this.codex.request("thread/start", asJsonValue(params));
     this.rememberThreadCwd(result, typeof params.cwd === "string" ? params.cwd : undefined);
-    await this.registerDesktopWorkspace(params.cwd, typeof params.cwd === "string" ? path.basename(params.cwd) : undefined);
+    await this.registerDesktopWorkspace(
+      params.cwd,
+      typeof params.cwd === "string" ? path.basename(params.cwd) : undefined,
+      { makeActive: true, promote: true, notifyDesktop: true }
+    );
     const threadId = threadIdFromThreadResult(result);
     if (threadId) {
       this.resumedThreads.add(threadId);
@@ -514,7 +527,11 @@ export class BridgeServer {
 
     const cwd = typeof message.cwd === "string" ? message.cwd : this.threadCwds.get(message.threadId);
     try {
-      await this.registerDesktopWorkspace(cwd);
+      await this.registerDesktopWorkspace(cwd, typeof cwd === "string" ? path.basename(cwd) : undefined, {
+        makeActive: true,
+        promote: true,
+        notifyDesktop: true
+      });
       await this.registerDesktopThreadIndex(message.threadId, typeof cwd === "string" ? path.basename(cwd) : undefined);
       await this.ensureThreadResumed(message.threadId, message, cwd);
       const input = await this.buildTurnInput(message.prompt, message.attachments, cwd);
@@ -758,7 +775,11 @@ export class BridgeServer {
     }
 
     const cwd = typeof message.cwd === "string" ? message.cwd : this.threadCwds.get(message.threadId);
-    await this.registerDesktopWorkspace(cwd);
+    await this.registerDesktopWorkspace(cwd, typeof cwd === "string" ? path.basename(cwd) : undefined, {
+      makeActive: true,
+      promote: true,
+      notifyDesktop: true
+    });
     await this.ensureThreadResumed(message.threadId, message, cwd);
     const sandbox = safeSandbox(message.sandbox);
     const approvalPolicy = safeApprovalPolicy(message.approvalPolicy);
@@ -908,7 +929,11 @@ export class BridgeServer {
 
     await mkdir(projectPath, { recursive: false });
     const project: ProjectSummary = { path: projectPath, name, source: "created" };
-    await this.registerDesktopWorkspace(projectPath, name);
+    await this.registerDesktopWorkspace(projectPath, name, {
+      makeActive: true,
+      promote: true,
+      notifyDesktop: true
+    });
     this.sendOk(ws, message.id, { project });
   }
 
@@ -958,7 +983,11 @@ export class BridgeServer {
     const thread = await this.readThreadMetadata(message.threadId);
     if (thread) {
       this.rememberThreadCwd(asJsonValue({ thread }));
-      await this.registerDesktopWorkspace(thread.cwd, typeof thread.cwd === "string" ? path.basename(thread.cwd) : undefined);
+      await this.registerDesktopWorkspace(thread.cwd, typeof thread.cwd === "string" ? path.basename(thread.cwd) : undefined, {
+        makeActive: true,
+        promote: true,
+        notifyDesktop: true
+      });
       await this.registerDesktopThreadIndex(thread.id, desktopThreadName(thread), desktopThreadUpdatedAt(thread));
     }
     const history = await this.chatHistoryPage(message.threadId, {
@@ -1407,7 +1436,11 @@ export class BridgeServer {
     }
   }
 
-  private async registerDesktopWorkspace(root: unknown, label?: string): Promise<void> {
+  private async registerDesktopWorkspace(
+    root: unknown,
+    label?: string,
+    options: DesktopWorkspaceRegistrationOptions = {}
+  ): Promise<void> {
     if (!this.desktopWorkspaceSync || typeof root !== "string" || root.trim() === "") {
       return;
     }
@@ -1415,13 +1448,18 @@ export class BridgeServer {
       try {
         const result = await registerCodexDesktopWorkspaceRoot(root, {
           codexHome: this.codexHome,
-          label
+          label,
+          makeActive: options.makeActive,
+          promote: options.promote
         });
         if (result.changed) {
           this.logger.info("desktop.workspace_registered", {
             root: result.root,
             updatedKeys: result.updatedKeys
           });
+        }
+        if (options.notifyDesktop) {
+          await this.notifyCodexDesktopWorkspaceRoot(result.root);
         }
       } catch (error) {
         this.logger.warn("desktop.workspace_register_failed", {
@@ -1433,6 +1471,21 @@ export class BridgeServer {
     const next = this.desktopWorkspaceSyncTail.then(register, register);
     this.desktopWorkspaceSyncTail = next.catch(() => undefined);
     await next;
+  }
+
+  private async notifyCodexDesktopWorkspaceRoot(root: string): Promise<void> {
+    if (process.platform !== "darwin" || process.env.NODE_ENV === "test") {
+      return;
+    }
+    try {
+      await execFileAsync("open", ["-g", "-a", "Codex", root], { timeout: 5000 });
+      this.logger.info("desktop.workspace_notified", { root });
+    } catch (error) {
+      this.logger.warn("desktop.workspace_notify_failed", {
+        root,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 
   private async registerDesktopThreadIndex(threadId: unknown, threadName?: string, updatedAt?: string | number | Date): Promise<void> {

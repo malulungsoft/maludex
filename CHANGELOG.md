@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.6 - 2026-05-05
+
+- Match Codex Desktop's own workspace activation flow for mobile-created or mobile-opened projects.
+- Promote the active mobile project to the front of Desktop workspace options and project order, while background reconciliation no longer rewrites the active project.
+- Notify the running macOS Codex app through `open -g -a Codex <project>` so the in-memory Desktop UI can refresh without waiting for a full app restart.
+
 ## 0.9.5 - 2026-05-05
 
 - Reconcile Codex Desktop workspace roots from recent Codex threads on bridge startup, mobile reconnect, periodic checks, and bridge status refresh.

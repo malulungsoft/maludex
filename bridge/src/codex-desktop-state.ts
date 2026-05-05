@@ -20,11 +20,12 @@ type JsonRecord = Record<string, unknown>;
 
 const GLOBAL_STATE_FILE = ".codex-global-state.json";
 const SESSION_INDEX_FILE = "session_index.jsonl";
-const WORKSPACE_ROOT_KEYS = ["active-workspace-roots", "electron-saved-workspace-roots", "project-order"] as const;
+const ACTIVE_WORKSPACE_ROOTS_KEY = "active-workspace-roots";
+const WORKSPACE_ROOT_OPTION_KEYS = ["electron-saved-workspace-roots", "project-order"] as const;
 
 export async function registerCodexDesktopWorkspaceRoot(
   root: string,
-  options: { codexHome?: string; label?: string } = {}
+  options: { codexHome?: string; label?: string; makeActive?: boolean; promote?: boolean } = {}
 ): Promise<CodexDesktopWorkspaceSyncResult> {
   const normalizedRoot = normalizeAbsoluteDirectory(root);
   const rootInfo = await stat(normalizedRoot);
@@ -37,10 +38,14 @@ export async function registerCodexDesktopWorkspaceRoot(
   const { state, mode } = await readGlobalState(globalStateFile);
   const updatedKeys: string[] = [];
 
-  for (const key of WORKSPACE_ROOT_KEYS) {
-    if (appendUniqueString(state, key, normalizedRoot)) {
+  for (const key of WORKSPACE_ROOT_OPTION_KEYS) {
+    if (upsertUniqueString(state, key, normalizedRoot, options.promote === true ? "front" : "back")) {
       updatedKeys.push(key);
     }
+  }
+
+  if (options.makeActive === true && setSingleActiveWorkspaceRoot(state, normalizedRoot)) {
+    updatedKeys.push(ACTIVE_WORKSPACE_ROOTS_KEY);
   }
 
   const labels = objectValue(state["electron-workspace-root-labels"]);
@@ -206,19 +211,39 @@ async function readSessionIndex(file: string): Promise<{ entries: Array<{ id: st
   }
 }
 
-function appendUniqueString(state: JsonRecord, key: string, value: string): boolean {
+function upsertUniqueString(state: JsonRecord, key: string, value: string, position: "front" | "back"): boolean {
   const current = Array.isArray(state[key]) ? (state[key] as unknown[]) : [];
   const strings = current.filter((item): item is string => typeof item === "string");
   const normalizedCurrentChanged =
     current.length !== strings.length || current.some((item, index) => item !== strings[index]);
-  if (strings.includes(value)) {
+  if (position === "back" && strings.includes(value)) {
     if (normalizedCurrentChanged) {
       state[key] = strings;
       return true;
     }
     return false;
   }
-  state[key] = [...strings, value];
+  const withoutValue = strings.filter((item) => item !== value);
+  const next = position === "front" ? [value, ...withoutValue] : [...withoutValue, value];
+  if (strings.length === next.length && strings.every((item, index) => item === next[index])) {
+    if (normalizedCurrentChanged) {
+      state[key] = strings;
+      return true;
+    }
+    return false;
+  }
+  state[key] = next;
+  return true;
+}
+
+function setSingleActiveWorkspaceRoot(state: JsonRecord, value: string): boolean {
+  const current = Array.isArray(state[ACTIVE_WORKSPACE_ROOTS_KEY])
+    ? (state[ACTIVE_WORKSPACE_ROOTS_KEY] as unknown[]).filter((item): item is string => typeof item === "string")
+    : [];
+  if (current.length === 1 && current[0] === value) {
+    return false;
+  }
+  state[ACTIVE_WORKSPACE_ROOTS_KEY] = [value];
   return true;
 }
 

@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.9.5`
+Current version: `v0.9.6`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs from a polished mobile UI.
 
@@ -25,12 +25,12 @@ The Mac bridge launches `codex app-server` over stdio JSONL and exposes a narrow
 
 ## Status
 
-`v0.9.5` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
+`v0.9.6` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
 
 ## Demo
 
 <p align="center">
-  <img src="media/maludex-simulator-demo.gif" alt="maludex v0.9.5 animated iOS Simulator UI tour" width="420">
+  <img src="media/maludex-simulator-demo.gif" alt="maludex v0.9.6 animated iOS Simulator UI tour" width="420">
 </p>
 
 The demo above is a continuous animated GIF built from the actual SwiftUI app running in Xcode's iOS Simulator with `scripts/create-demo-video.sh`. The script launches the installed app with local demo state, records the real maludex UI with `simctl`, and rebuilds the GIF from the captured Simulator video. [Watch the MP4 version](media/maludex-simulator-demo.mp4).

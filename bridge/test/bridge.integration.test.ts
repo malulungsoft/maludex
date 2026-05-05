@@ -261,7 +261,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.9.5",
+      bridgeVersion: "0.9.6",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -364,7 +364,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     oldestEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.9.5"
+    bridgeVersion: "0.9.6"
   });
 
   ws.send(
@@ -715,7 +715,10 @@ test("lists bounded projects, creates a selected project, and forwards model cho
   const ws = await connect(`ws://${address.host}:${address.port}`, token);
   await waitForMessage(ws, (message) => message.type === "bridge.ready");
   await waitForJsonFile(globalStateFile, (state) => {
-    return Array.isArray(state["active-workspace-roots"]) && state["active-workspace-roots"].includes(recentProject);
+    return (
+      Array.isArray(state["electron-saved-workspace-roots"]) &&
+      state["electron-saved-workspace-roots"].includes(recentProject)
+    );
   });
   let sessionIndexRows = await waitForJsonlFile(sessionIndexFile, (rows) => {
     return rows.some((row) => row.id === "recent-thread-1" && row.thread_name === "Recent Codex App");
@@ -739,7 +742,10 @@ test("lists bounded projects, creates a selected project, and forwards model cho
   ws.send(JSON.stringify({ id: "mobile-reconcile-status", type: "bridge.status" }));
   await waitForMessage(ws, (message) => message.id === "mobile-reconcile-status");
   await waitForJsonFile(globalStateFile, (state) => {
-    return Array.isArray(state["active-workspace-roots"]) && state["active-workspace-roots"].includes(recentProject);
+    return (
+      Array.isArray(state["electron-saved-workspace-roots"]) &&
+      state["electron-saved-workspace-roots"].includes(recentProject)
+    );
   });
 
   ws.send(JSON.stringify({ id: "mobile-projects", type: "project.list" }));
@@ -784,9 +790,12 @@ test("lists bounded projects, creates a selected project, and forwards model cho
   });
   const createdProject = path.join(projectRoot, "Created From iPhone");
   const desktopStateAfterCreate = JSON.parse(await readFile(globalStateFile, "utf8")) as Record<string, unknown>;
-  expect(desktopStateAfterCreate["active-workspace-roots"]).toContain(createdProject);
-  expect(desktopStateAfterCreate["electron-saved-workspace-roots"]).toContain(createdProject);
-  expect(desktopStateAfterCreate["project-order"]).toContain(createdProject);
+  expect(desktopStateAfterCreate["active-workspace-roots"]).toEqual([createdProject]);
+  expect(desktopStateAfterCreate["electron-saved-workspace-roots"]).toEqual(
+    expect.arrayContaining([createdProject])
+  );
+  expect((desktopStateAfterCreate["electron-saved-workspace-roots"] as string[])[0]).toBe(createdProject);
+  expect((desktopStateAfterCreate["project-order"] as string[])[0]).toBe(createdProject);
   expect(desktopStateAfterCreate["electron-workspace-root-labels"]).toMatchObject({
     [createdProject]: "Created From iPhone"
   });
@@ -794,9 +803,9 @@ test("lists bounded projects, creates a selected project, and forwards model cho
   ws.send(JSON.stringify({ id: "mobile-thread-workspace-sync", type: "thread.start", cwd: existingProject }));
   await waitForMessage(ws, (message) => message.id === "mobile-thread-workspace-sync");
   const desktopStateAfterThread = JSON.parse(await readFile(globalStateFile, "utf8")) as Record<string, unknown>;
-  expect(desktopStateAfterThread["active-workspace-roots"]).toContain(existingProject);
-  expect(desktopStateAfterThread["electron-saved-workspace-roots"]).toContain(existingProject);
-  expect(desktopStateAfterThread["project-order"]).toContain(existingProject);
+  expect(desktopStateAfterThread["active-workspace-roots"]).toEqual([existingProject]);
+  expect((desktopStateAfterThread["electron-saved-workspace-roots"] as string[])[0]).toBe(existingProject);
+  expect((desktopStateAfterThread["project-order"] as string[])[0]).toBe(existingProject);
   sessionIndexRows = (await readFile(sessionIndexFile, "utf8"))
     .trim()
     .split("\n")

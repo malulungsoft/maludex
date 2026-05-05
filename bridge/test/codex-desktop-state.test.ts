@@ -37,7 +37,7 @@ test("registers a workspace root in Codex Desktop global state without dropping 
   expect(result.changed).toBe(true);
 
   const state = JSON.parse(await readFile(globalStateFile, "utf8")) as Record<string, unknown>;
-  expect(state["active-workspace-roots"]).toEqual([existing, workspace]);
+  expect(state["active-workspace-roots"]).toEqual([existing]);
   expect(state["electron-saved-workspace-roots"]).toEqual([existing, workspace]);
   expect(state["project-order"]).toEqual([existing, workspace]);
   expect(state["electron-workspace-root-labels"]).toMatchObject({
@@ -49,6 +49,22 @@ test("registers a workspace root in Codex Desktop global state without dropping 
 
   const second = await registerCodexDesktopWorkspaceRoot(workspace, { codexHome, label: "ignored" });
   expect(second.changed).toBe(false);
+
+  const promoted = await registerCodexDesktopWorkspaceRoot(workspace, {
+    codexHome,
+    label: "ignored",
+    makeActive: true,
+    promote: true
+  });
+  expect(promoted.changed).toBe(true);
+  const promotedState = JSON.parse(await readFile(globalStateFile, "utf8")) as Record<string, unknown>;
+  expect(promotedState["active-workspace-roots"]).toEqual([workspace]);
+  expect(promotedState["electron-saved-workspace-roots"]).toEqual([workspace, existing]);
+  expect(promotedState["project-order"]).toEqual([workspace, existing]);
+  expect(promotedState["electron-workspace-root-labels"]).toMatchObject({
+    [existing]: "Existing",
+    [workspace]: "webnovel"
+  });
 
   await rm(temp, { recursive: true, force: true });
 });
