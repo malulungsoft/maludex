@@ -82,10 +82,11 @@ const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
 const MAX_PROMPT_QUEUE_ITEMS = 50;
-const BRIDGE_VERSION = "0.9.4";
+const BRIDGE_VERSION = "0.9.5";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+const DESKTOP_WORKSPACE_RECONCILE_INTERVAL_MS = 30 * 1000;
 
 export type BridgeServerOptions = {
   host?: string;
@@ -143,6 +144,8 @@ export class BridgeServer {
   private readonly codexHome?: string;
   private readonly desktopWorkspaceSync: boolean;
   private desktopWorkspaceSyncTail: Promise<void> = Promise.resolve();
+  private desktopWorkspaceReconcileTimer: NodeJS.Timeout | null = null;
+  private desktopWorkspaceReconcileInFlight: Promise<void> | null = null;
   private readonly approvalRequestTimeoutMs: number;
   private nextEventId = 1;
   private nextPromptQueueId = 1;
@@ -186,6 +189,8 @@ export class BridgeServer {
     this.codex.on("serverRequest", (message) => this.handleCodexServerRequest(message));
     await this.codex.start();
     this.startTokenPolling();
+    this.startDesktopWorkspaceReconciliation();
+    void this.reconcileDesktopWorkspaceRoots("startup");
 
     this.httpServer = createServer();
     this.wss = new WebSocketServer({ noServer: true });
@@ -218,6 +223,7 @@ export class BridgeServer {
     }
     this.mobileSender?.stop();
     this.wss?.clients.forEach((client) => client.close(1001, "bridge stopping"));
+    this.stopDesktopWorkspaceReconciliation();
     await new Promise<void>((resolve) => {
       if (!this.httpServer) {
         resolve();
@@ -279,6 +285,75 @@ export class BridgeServer {
     }
   }
 
+  private startDesktopWorkspaceReconciliation(): void {
+    this.stopDesktopWorkspaceReconciliation();
+    if (!this.desktopWorkspaceSync) {
+      return;
+    }
+    this.desktopWorkspaceReconcileTimer = setInterval(() => {
+      void this.reconcileDesktopWorkspaceRoots("interval");
+    }, DESKTOP_WORKSPACE_RECONCILE_INTERVAL_MS);
+    this.desktopWorkspaceReconcileTimer.unref();
+  }
+
+  private stopDesktopWorkspaceReconciliation(): void {
+    if (this.desktopWorkspaceReconcileTimer) {
+      clearInterval(this.desktopWorkspaceReconcileTimer);
+      this.desktopWorkspaceReconcileTimer = null;
+    }
+  }
+
+  private async reconcileDesktopWorkspaceRoots(reason: string): Promise<void> {
+    if (!this.desktopWorkspaceSync) {
+      return;
+    }
+    if (this.desktopWorkspaceReconcileInFlight) {
+      return this.desktopWorkspaceReconcileInFlight;
+    }
+    const reconcile = async () => {
+      try {
+        const result = await this.codex.request(
+          "thread/list",
+          asJsonValue({
+            limit: 100,
+            sortKey: "updated_at",
+            sortDirection: "desc",
+            archived: false
+          })
+        );
+        const rawThreads: unknown[] = isRecord(result) && Array.isArray(result.data) ? result.data : [];
+        const threads = rawThreads.filter(isRecord);
+        let cwdCount = 0;
+        for (const thread of threads) {
+          const cwd = typeof thread.cwd === "string" && thread.cwd.trim() ? thread.cwd : undefined;
+          if (!cwd) {
+            continue;
+          }
+          cwdCount += 1;
+          const label = path.basename(cwd) || undefined;
+          await this.registerDesktopWorkspace(cwd, label);
+          if (typeof thread.id === "string" && thread.id.trim()) {
+            await this.registerDesktopThreadIndex(thread.id, label, desktopThreadUpdatedAt(thread));
+          }
+        }
+        this.logger.info("desktop.workspace_reconciled", {
+          reason,
+          threadCount: threads.length,
+          cwdCount
+        });
+      } catch (error) {
+        this.logger.warn("desktop.workspace_reconcile_failed", {
+          reason,
+          message: error instanceof Error ? error.message : String(error)
+        });
+      } finally {
+        this.desktopWorkspaceReconcileInFlight = null;
+      }
+    };
+    this.desktopWorkspaceReconcileInFlight = reconcile();
+    await this.desktopWorkspaceReconcileInFlight;
+  }
+
   private handleMobileConnection(ws: WebSocket, request: import("node:http").IncomingMessage): void {
     if (this.mobile && this.mobile.readyState === WebSocket.OPEN) {
       this.mobile.close(4000, "replaced by a new authenticated client");
@@ -305,6 +380,7 @@ export class BridgeServer {
       this.emitReplayGapIfNeeded(afterEventId);
       this.emitRestoredPromptQueues();
       void this.resumeIdlePromptQueues();
+      void this.reconcileDesktopWorkspaceRoots("mobile.connect");
     });
 
     ws.on("message", (data) => {
@@ -371,7 +447,7 @@ export class BridgeServer {
       } else if (message.type === "ping") {
         this.sendOk(ws, message.id, { pong: true });
       } else if (message.type === "bridge.status") {
-        this.sendBridgeStatus(ws, message);
+        await this.sendBridgeStatus(ws, message);
       } else {
         this.sendError(ws, messageId(parsed), "unknown_type", `Unsupported message type: ${parsed.type}`);
       }
@@ -931,7 +1007,8 @@ export class BridgeServer {
     }));
   }
 
-  private sendBridgeStatus(ws: WebSocket, message: Extract<MobileMessage, { type: "bridge.status" }>): void {
+  private async sendBridgeStatus(ws: WebSocket, message: Extract<MobileMessage, { type: "bridge.status" }>): Promise<void> {
+    await this.reconcileDesktopWorkspaceRoots("bridge.status");
     const address = this.address();
     const status = {
       bridgeVersion: BRIDGE_VERSION,

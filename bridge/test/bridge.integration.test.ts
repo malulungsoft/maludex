@@ -121,6 +121,52 @@ async function waitForReport(
   throw new Error(`timed out waiting for report entry; saw ${last.length} entries`);
 }
 
+async function waitForJsonFile(
+  file: string,
+  predicate: (value: Record<string, unknown>) => boolean,
+  timeoutMs = 5000
+): Promise<Record<string, unknown>> {
+  const start = Date.now();
+  let last: Record<string, unknown> | null = null;
+  while (Date.now() - start < timeoutMs) {
+    try {
+      last = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
+      if (predicate(last)) {
+        return last;
+      }
+    } catch {
+      // File may not be written yet.
+    }
+    await sleep(50);
+  }
+  throw new Error(`timed out waiting for JSON file predicate; last=${JSON.stringify(last)}`);
+}
+
+async function waitForJsonlFile(
+  file: string,
+  predicate: (value: Array<Record<string, unknown>>) => boolean,
+  timeoutMs = 5000
+): Promise<Array<Record<string, unknown>>> {
+  const start = Date.now();
+  let last: Array<Record<string, unknown>> = [];
+  while (Date.now() - start < timeoutMs) {
+    try {
+      last = (await readFile(file, "utf8"))
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      if (predicate(last)) {
+        return last;
+      }
+    } catch {
+      // File may not be written yet.
+    }
+    await sleep(50);
+  }
+  throw new Error(`timed out waiting for JSONL file predicate; saw ${last.length} rows`);
+}
+
 async function writeTokenFile(directory: string, token: string, mode: number): Promise<string> {
   const tokenFile = path.join(directory, "bridge-token");
   await writeFile(tokenFile, `${token}\n`, { mode });
@@ -215,7 +261,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.9.4",
+      bridgeVersion: "0.9.5",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -318,7 +364,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     oldestEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.9.4"
+    bridgeVersion: "0.9.5"
   });
 
   ws.send(
@@ -668,6 +714,33 @@ test("lists bounded projects, creates a selected project, and forwards model cho
   const address = server.address();
   const ws = await connect(`ws://${address.host}:${address.port}`, token);
   await waitForMessage(ws, (message) => message.type === "bridge.ready");
+  await waitForJsonFile(globalStateFile, (state) => {
+    return Array.isArray(state["active-workspace-roots"]) && state["active-workspace-roots"].includes(recentProject);
+  });
+  let sessionIndexRows = await waitForJsonlFile(sessionIndexFile, (rows) => {
+    return rows.some((row) => row.id === "recent-thread-1" && row.thread_name === "Recent Codex App");
+  });
+  expect(sessionIndexRows).toContainEqual(
+    expect.objectContaining({
+      id: "recent-thread-1",
+      thread_name: "Recent Codex App"
+    })
+  );
+
+  await writeFile(
+    globalStateFile,
+    `${JSON.stringify({
+      "active-workspace-roots": [],
+      "electron-saved-workspace-roots": [],
+      "electron-workspace-root-labels": {},
+      "project-order": []
+    })}\n`
+  );
+  ws.send(JSON.stringify({ id: "mobile-reconcile-status", type: "bridge.status" }));
+  await waitForMessage(ws, (message) => message.id === "mobile-reconcile-status");
+  await waitForJsonFile(globalStateFile, (state) => {
+    return Array.isArray(state["active-workspace-roots"]) && state["active-workspace-roots"].includes(recentProject);
+  });
 
   ws.send(JSON.stringify({ id: "mobile-projects", type: "project.list" }));
   const projectList = await waitForMessage<Record<string, unknown>>(
@@ -724,7 +797,7 @@ test("lists bounded projects, creates a selected project, and forwards model cho
   expect(desktopStateAfterThread["active-workspace-roots"]).toContain(existingProject);
   expect(desktopStateAfterThread["electron-saved-workspace-roots"]).toContain(existingProject);
   expect(desktopStateAfterThread["project-order"]).toContain(existingProject);
-  const sessionIndexRows = (await readFile(sessionIndexFile, "utf8"))
+  sessionIndexRows = (await readFile(sessionIndexFile, "utf8"))
     .trim()
     .split("\n")
     .map((line) => JSON.parse(line) as Record<string, unknown>);

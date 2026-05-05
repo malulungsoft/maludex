@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.5 - 2026-05-05
+
+- Reconcile Codex Desktop workspace roots from recent Codex threads on bridge startup, mobile reconnect, periodic checks, and bridge status refresh.
+- Repair cases where Codex Desktop rewrites `~/.codex/.codex-global-state.json` and drops a mobile-created project such as `webnovel`.
+- Keep desktop thread index labels based on workspace names during reconciliation instead of prompt bodies.
+
 ## 0.9.4 - 2026-05-05
 
 - Add a Codex-style slash command palette to the iPhone prompt composer and expanded composer.
