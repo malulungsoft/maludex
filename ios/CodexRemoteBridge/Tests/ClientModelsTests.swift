@@ -38,6 +38,10 @@ struct ClientModelsTests {
         require(AppCopy(language: .korean).notificationStatusTitle("denied") == "거부됨", "Korean notification status copy should be available")
         require(AppCopy(language: .english).openAppSettingsTitle == "Open iPhone Settings", "notification settings recovery copy should be available")
         require(AppCopy(language: .korean).notificationsBlockedTitle == "알림이 차단됨", "Korean notification recovery copy should be available")
+        require(AppCopy(language: .english).setupChecklistTitle == "Setup checklist", "setup checklist copy should be available")
+        require(AppCopy(language: .korean).setupPairingStepTitle == "iPhone 페어링", "Korean setup checklist copy should be available")
+        require(AppCopy(language: .english).approvalConfirmedTitle == "Approval confirmed", "approval confirmation copy should be available")
+        require(AppCopy(language: .korean).mobileTurnPersistedTitle == "데스크톱 기록에 저장됨", "Korean mobile turn persistence copy should be available")
         require(AppCopy(language: .english).mobileHandoffRetentionTitle == "Mobile handoff retention", "handoff retention copy should be available")
         require(AppCopy(language: .english).queuedPromptsTitle == "Queued prompts", "queued prompt diagnostics copy should be available")
         require(AppCopy(language: .korean).queuedPromptsTitle == "대기 중 프롬프트", "Korean queued prompt diagnostics copy should be available")
@@ -175,6 +179,43 @@ struct ClientModelsTests {
         )
         require(recoveredSync.title == "기록 복구됨", "Korean sync presentation should explain recovered history")
         require(recoveredSync.detail.contains("3개"), "sync presentation should include recovered item count")
+        let replayGapSync = transcriptSyncPresentation(
+            lastSyncedAt: Date(timeIntervalSince1970: 995),
+            isRefreshing: false,
+            now: now,
+            language: .english,
+            isConnected: true,
+            hasThread: true,
+            recoveredItemCount: 0,
+            missedEventCount: 8
+        )
+        require(replayGapSync.title == "Catching up", "replay gaps should surface catch-up state")
+        require(replayGapSync.detail.contains("8"), "replay gap copy should include missed event count")
+        require(
+            mobileTurnStatusSystemMessage(type: "mobile.turn.received", language: .english, promptBytes: 48, attachmentCount: 2)
+                == "iPhone request delivered to the Mac bridge. 48 bytes, 2 attachments.",
+            "mobile turn delivery should produce a safe system message without prompt bodies"
+        )
+        require(
+            mobileTurnStatusSystemMessage(type: "mobile.turn.persisted", language: .korean, promptBytes: 48, attachmentCount: 0)
+                == "iPhone 요청이 데스크톱 채팅 기록에 저장되었습니다.",
+            "mobile turn persistence should be localized"
+        )
+        require(
+            approvalResolutionSystemMessage(decision: "accept", reason: "confirmed", language: .english)
+                == "Approval confirmed by the Mac bridge.",
+            "approval resolution should explain confirmation"
+        )
+        let checklist = setupChecklistItems(
+            language: .english,
+            isConnected: true,
+            hasPairing: true,
+            hasProject: false,
+            notificationsAllowed: false
+        )
+        require(checklist.count == 4, "setup checklist should expose the onboarding steps")
+        require(checklist[0].isComplete, "connected bridge should complete the bridge checklist item")
+        require(!checklist[2].isComplete, "missing project should keep project checklist item incomplete")
 
         let codeBlocks = fencedCodeBlocks(in: """
         설명

@@ -38,6 +38,11 @@ type PendingApproval = {
   timer: NodeJS.Timeout;
 };
 
+type RecentApprovalResponse = {
+  method: string;
+  decision: string;
+};
+
 type BufferedEvent = JsonObject & {
   eventId: number;
 };
@@ -76,7 +81,7 @@ const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
 const MAX_PROMPT_QUEUE_ITEMS = 50;
-const BRIDGE_VERSION = "0.8.0";
+const BRIDGE_VERSION = "0.9.0";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
@@ -120,6 +125,7 @@ export class BridgeServer {
   private readonly mobileAuthoredTurns = new Map<string, MobileAuthoredTurn>();
   private readonly mobileAuthoredTurnsByThread = new Map<string, MobileAuthoredTurn[]>();
   private readonly pendingApprovals = new Map<string, PendingApproval>();
+  private readonly recentApprovalResponses = new Map<string, RecentApprovalResponse>();
   private readonly eventBuffer: BufferedEvent[] = [];
   private readonly resumedThreads = new Set<string>();
   private readonly eventReplayLimit: number;
@@ -284,9 +290,11 @@ export class BridgeServer {
         minClientProtocolVersion: MIN_CLIENT_PROTOCOL_VERSION,
         bridgeVersion: BRIDGE_VERSION,
         serverTime: new Date().toISOString(),
-        lastEventId: this.lastEventId()
+        lastEventId: this.lastEventId(),
+        oldestEventId: this.oldestEventId()
       });
       this.replayEvents(afterEventId);
+      this.emitReplayGapIfNeeded(afterEventId);
       this.emitRestoredPromptQueues();
       void this.resumeIdlePromptQueues();
     });
@@ -442,6 +450,15 @@ export class BridgeServer {
         promptBytes,
         attachments: handoffAttachments(message.attachments)
       });
+      this.emitToMobile({
+        type: "mobile.turn.received",
+        kind: "turn.start",
+        threadId: message.threadId,
+        promptBytes,
+        attachmentCount,
+        queued: shouldQueue,
+        cwdKnown: typeof cwd === "string"
+      });
 
       this.logger.info(shouldQueue ? "mobile.turn_queued" : "mobile.turn_start", {
         id: message.id,
@@ -530,6 +547,16 @@ export class BridgeServer {
       prompt: message.prompt,
       promptBytes,
       attachments: handoffAttachments(message.attachments)
+    });
+    this.emitToMobile({
+      type: "mobile.turn.received",
+      kind: "turn.steer",
+      threadId: message.threadId,
+      turnId,
+      promptBytes,
+      attachmentCount: Array.isArray(message.attachments) ? message.attachments.length : 0,
+      queued: false,
+      cwdKnown: typeof cwd === "string"
     });
     this.logger.info("mobile.turn_steer", {
       id: message.id,
@@ -655,6 +682,15 @@ export class BridgeServer {
       promptBytes,
       attachments: []
     });
+    this.emitToMobile({
+      type: "mobile.turn.received",
+      kind: "subagent.start",
+      threadId: message.threadId,
+      promptBytes,
+      attachmentCount: 0,
+      queued: false,
+      cwdKnown: typeof cwd === "string"
+    });
     const forkParams: JsonObject = {
       threadId: message.threadId,
       cwd: typeof cwd === "string" ? cwd : undefined,
@@ -733,6 +769,10 @@ export class BridgeServer {
     this.codex.respond(pending.codexRequestId, result);
     clearTimeout(pending.timer);
     this.pendingApprovals.delete(message.approvalId);
+    this.recentApprovalResponses.set(message.approvalId, {
+      method: pending.method,
+      decision: message.decision ?? "custom"
+    });
     this.logger.info("mobile.approval_response", {
       id: message.id,
       approvalId: message.approvalId,
@@ -1112,6 +1152,23 @@ export class BridgeServer {
       return;
     }
     const params = isRecord(message.params) ? message.params : undefined;
+    if (message.method === "serverRequest/resolved" && params) {
+      const requestId = typeof params.requestId === "string" ? params.requestId : null;
+      if (requestId) {
+        const response = this.recentApprovalResponses.get(requestId);
+        if (response) {
+          this.recentApprovalResponses.delete(requestId);
+          this.emitToMobile({
+            type: "approval.resolved",
+            approvalId: requestId,
+            method: response.method,
+            decision: response.decision,
+            reason: "confirmed"
+          });
+        }
+      }
+    }
+
     if (message.method === "turn/started" && params) {
       const threadId = typeof params.threadId === "string" ? params.threadId : null;
       const turn = isRecord(params.turn) ? params.turn : null;
@@ -1153,6 +1210,11 @@ export class BridgeServer {
       method: message.method,
       params: mobileSafeCodexParams(message.method, message.params)
     });
+
+    const activity = threadActivityFromCodexNotification(message.method, params);
+    if (activity) {
+      this.emitToMobile(activity);
+    }
   }
 
   private handleCodexServerRequest(message: JsonValue): void {
@@ -1195,6 +1257,7 @@ export class BridgeServer {
     this.codex.respond(pending.codexRequestId, approvalResult(pending.method, "decline"));
     clearTimeout(pending.timer);
     this.pendingApprovals.delete(approvalId);
+    this.recentApprovalResponses.delete(approvalId);
     this.logger.warn("approval.declined_without_client", { approvalId, method: pending.method });
     this.emitToMobile({
       type: "approval.resolved",
@@ -1212,6 +1275,7 @@ export class BridgeServer {
     }
     this.codex.respond(pending.codexRequestId, approvalResult(pending.method, "decline"));
     this.pendingApprovals.delete(approvalId);
+    this.recentApprovalResponses.delete(approvalId);
     this.logger.warn("approval.timed_out", { approvalId, method: pending.method });
     this.emitToMobile({
       type: "approval.resolved",
@@ -1396,6 +1460,13 @@ export class BridgeServer {
           threadId: record.threadId,
           turnId: record.turnId ?? null
         });
+        this.emitToMobile({
+          type: "mobile.turn.persisted",
+          threadId: record.threadId,
+          turnId: record.turnId,
+          injected: false,
+          alreadyPresent: true
+        });
         return;
       }
 
@@ -1412,10 +1483,24 @@ export class BridgeServer {
         turnId: record.turnId ?? null,
         itemCount: items.length
       });
+      this.emitToMobile({
+        type: "mobile.turn.persisted",
+        threadId: record.threadId,
+        turnId: record.turnId,
+        injected: true,
+        alreadyPresent: false,
+        itemCount: items.length
+      });
     } catch (error) {
       this.logger.warn("mobile.turn_persist_failed", {
         threadId: record.threadId,
         turnId: record.turnId ?? null,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      this.emitToMobile({
+        type: "mobile.turn.persist_failed",
+        threadId: record.threadId,
+        turnId: record.turnId,
         message: error instanceof Error ? error.message : String(error)
       });
     }
@@ -1599,6 +1684,24 @@ export class BridgeServer {
     return this.nextEventId - 1;
   }
 
+  private oldestEventId(): number {
+    return this.eventBuffer[0]?.eventId ?? 0;
+  }
+
+  private emitReplayGapIfNeeded(afterEventId: number): void {
+    const oldest = this.oldestEventId();
+    if (oldest === 0 || afterEventId >= oldest - 1) {
+      return;
+    }
+    this.emitToMobile({
+      type: "sync.replay_gap",
+      requestedAfterEventId: afterEventId,
+      oldestEventId: oldest,
+      lastEventId: this.lastEventId(),
+      requiresRefresh: true
+    });
+  }
+
   private sendOk(ws: WebSocket, id: string | undefined, result: JsonValue): void {
     const response: JsonObject = { type: "response", ok: true, result };
     if (id) {
@@ -1634,6 +1737,45 @@ function afterEventIdFromRequest(request: import("node:http").IncomingMessage): 
   const raw = url.searchParams.get("afterEventId") ?? fromHeader ?? "0";
   const value = Number(raw);
   return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function threadActivityFromCodexNotification(method: string, params: Record<string, unknown> | undefined): JsonObject | null {
+  if (!params) {
+    return null;
+  }
+  const threadId = typeof params.threadId === "string" ? params.threadId : null;
+  if (!threadId) {
+    return null;
+  }
+  if (method === "item/agentMessage/delta") {
+    return null;
+  }
+
+  const turn = isRecord(params.turn) ? params.turn : null;
+  const turnId =
+    typeof params.turnId === "string"
+      ? params.turnId
+      : turn && typeof turn.id === "string"
+        ? turn.id
+        : undefined;
+  const item = isRecord(params.item) ? params.item : null;
+  const itemId = item && typeof item.id === "string" ? item.id : typeof params.itemId === "string" ? params.itemId : undefined;
+  const requiresRefresh =
+    method === "turn/completed" ||
+    method === "thread/compacted" ||
+    method === "item/completed" ||
+    method === "item/agentMessage" ||
+    method === "item/agentReasoning";
+
+  return {
+    type: "thread.activity",
+    threadId,
+    method,
+    turnId,
+    itemId,
+    requiresRefresh,
+    serverTime: new Date().toISOString()
+  };
 }
 
 function defaultProjectRoots(): string[] {

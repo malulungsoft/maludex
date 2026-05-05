@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 - 2026-05-05
+
+- Add replay-gap bridge notifications with oldest/latest event IDs so reconnecting iPhone clients can catch up safely.
+- Emit desktop thread-activity hints for completed turns and persisted items, prompting bounded mobile transcript refreshes when needed.
+- Show iPhone request delivery and desktop-history persistence status in the mobile transcript without logging prompt bodies by default.
+- Keep approval cards visible until bridge confirmation and add explicit approval-resolution transcript messages.
+- Add iPhone setup checklist guidance for bridge connection, QR pairing, project selection, and approval notifications.
+- Add a macOS Control Center action log for update, repair, start/stop/restart, pairing QR, and token rotation operations.
+
 ## 0.8.0 - 2026-05-05
 
 - Add Desktop Sync 2.0 status states for up-to-date, delayed, catching-up, and recovered transcript updates.

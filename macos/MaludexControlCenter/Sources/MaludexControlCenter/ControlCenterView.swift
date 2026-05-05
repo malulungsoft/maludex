@@ -13,6 +13,7 @@ struct ControlCenterView: View {
     @State private var handoffError: String?
     @State private var qrImage: NSImage?
     @State private var qrImageURL: URL?
+    @State private var runLog: [ControlCenterRunLogEntry] = []
 
     private var runner: DoctorRunner {
         DoctorRunner(repoRoot: URL(fileURLWithPath: repoRoot))
@@ -38,6 +39,7 @@ struct ControlCenterView: View {
                         overviewGrid
                         nextStepPanel
                         actionPanel
+                        activityLogPanel
                         handoffPanel
                         issuesPanel
                         qrPanel
@@ -265,6 +267,30 @@ struct ControlCenterView: View {
         .background { panelBackground }
     }
 
+    private var activityLogPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(copy.activityLogTitle)
+                .font(.system(size: 18, weight: .bold))
+
+            if runLog.isEmpty {
+                Text(copy.activityLogEmpty)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(runLog.prefix(8)) { entry in
+                        RunLogRow(entry: entry)
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .background { panelBackground }
+    }
+
     private var handoffPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -412,7 +438,7 @@ struct ControlCenterView: View {
     }
 
     private func perform(_ action: ControlCenterAction) async {
-        await runBusy {
+        await runBusy(action: controlCenterActionTitle(action)) {
             report = try await runner.run(action)
         }
     }
@@ -436,7 +462,7 @@ struct ControlCenterView: View {
 
     private func pairingQR() async {
         let url = URL(fileURLWithPath: "/tmp/maludex-pairing.png")
-        await runBusy {
+        await runBusy(action: copy.pairButton) {
             report = try await runner.run(.pairingQR(url))
             qrImage = NSImage(contentsOf: url)
             qrImageURL = url
@@ -445,21 +471,59 @@ struct ControlCenterView: View {
 
     private func rotateToken() async {
         let url = URL(fileURLWithPath: "/tmp/maludex-pairing.png")
-        await runBusy {
+        await runBusy(action: copy.rotateButton) {
             report = try await runner.run(.rotateToken(url))
             qrImage = NSImage(contentsOf: url)
             qrImageURL = url
         }
     }
 
-    private func runBusy(_ operation: @escaping () async throws -> Void) async {
+    private func runBusy(action: String? = nil, _ operation: @escaping () async throws -> Void) async {
         isBusy = true
         defer { isBusy = false }
+        if let action {
+            appendRunLog(action: action, status: .running, detail: copy.actionStartedTitle(action))
+        }
         do {
             try await operation()
+            if let action {
+                appendRunLog(action: action, status: .succeeded, detail: copy.actionSucceededTitle(action))
+            }
             errorMessage = nil
         } catch {
+            if let action {
+                appendRunLog(action: action, status: .failed, detail: copy.actionFailedTitle(action))
+            }
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func appendRunLog(action: String, status: ControlCenterRunLogStatus, detail: String) {
+        runLog.insert(
+            ControlCenterRunLogEntry(action: action, status: status, detail: detail),
+            at: 0
+        )
+        runLog = Array(runLog.prefix(40))
+    }
+
+    private func controlCenterActionTitle(_ action: ControlCenterAction) -> String {
+        switch action {
+        case .status:
+            copy.refreshButton
+        case .update:
+            copy.updateButton
+        case .repair:
+            copy.repairButton
+        case .start:
+            copy.startButton
+        case .stop:
+            copy.stopButton
+        case .restart:
+            copy.restartButton
+        case .pairingQR:
+            copy.pairButton
+        case .rotateToken:
+            copy.rotateButton
         }
     }
 
@@ -597,6 +661,47 @@ private struct HandoffEntryRow: View {
         }
         .padding(14)
         .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct RunLogRow: View {
+    let entry: ControlCenterRunLogEntry
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: entry.status.systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(statusColor)
+                .frame(width: 24, height: 24)
+                .background(statusColor.opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(entry.action)
+                        .font(.system(size: 14, weight: .semibold))
+                    Spacer(minLength: 8)
+                    Text(entry.createdAt, style: .time)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Text(entry.detail)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var statusColor: Color {
+        switch entry.status {
+        case .running:
+            return Color(red: 0.72, green: 0.41, blue: 0.18)
+        case .succeeded:
+            return Color(red: 0.18, green: 0.49, blue: 0.24)
+        case .failed:
+            return Color(red: 0.69, green: 0.22, blue: 0.18)
+        }
     }
 }
 

@@ -215,7 +215,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.8.0",
+      bridgeVersion: "0.9.0",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -315,9 +315,10 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
   const ready = await waitForMessage(ws, (message) => message.type === "bridge.ready");
   expect(ready).toMatchObject({
     lastEventId: 0,
+    oldestEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.8.0"
+    bridgeVersion: "0.9.0"
   });
 
   ws.send(
@@ -344,6 +345,18 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     })
   );
   await waitForMessage(ws, (message) => message.id === "mobile-2");
+  const received = await waitForMessage<Record<string, unknown> & { eventId: number }>(
+    ws,
+    (message) => message.type === "mobile.turn.received"
+  );
+  expect(received).toMatchObject({
+    type: "mobile.turn.received",
+    threadId: "thread-1",
+    kind: "turn.start",
+    promptBytes: Buffer.byteLength(prompt, "utf8"),
+    attachmentCount: 0
+  });
+  expect(JSON.stringify(received)).not.toContain(prompt);
   const streamedEvent = await waitForMessage<Record<string, unknown> & { eventId: number }>(
     ws,
     (message) => message.type === "codex.event" && message.method === "item/agentMessage/delta"
@@ -391,6 +404,17 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     approvalId: approval.approvalId,
     method: "item/commandExecution/requestApproval",
     decision: "accept"
+  });
+  const approvalResolved = await waitForMessage<Record<string, unknown> & { eventId: number }>(
+    replayWs,
+    (message) => message.type === "approval.resolved" && message.approvalId === approval.approvalId
+  );
+  expect(approvalResolved).toMatchObject({
+    type: "approval.resolved",
+    approvalId: approval.approvalId,
+    method: "item/commandExecution/requestApproval",
+    decision: "accept",
+    reason: "confirmed"
   });
 
   replayWs.send(
@@ -527,6 +551,10 @@ test("keeps approval requests pending while the iPhone reconnects", async () => 
   );
   await waitForMessage(
     replayWs,
+    (message) => message.type === "approval.resolved" && message.approvalId === replayedApproval.approvalId
+  );
+  await waitForMessage(
+    replayWs,
     (message) => message.type === "codex.event" && message.method === "serverRequest/resolved"
   );
 
@@ -535,6 +563,59 @@ test("keeps approval requests pending while the iPhone reconnects", async () => 
   expect(approvalResponse).toMatchObject({
     id: "approval-1",
     result: { decision: "accept" }
+  });
+
+  replayWs.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("emits replay gaps and thread activity hints so mobile clients can catch up safely", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    codexEnv: {
+      MOCK_CODEX_AUTO_COMPLETE_TURN: "1"
+    },
+    eventReplayLimit: 2,
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  const address = server.address();
+  const wsUrl = `ws://${address.host}:${address.port}`;
+  const ws = await connect(wsUrl, token);
+  await waitForMessage(ws, (message) => message.type === "bridge.ready");
+
+  ws.send(JSON.stringify({ id: "thread-activity-turn", type: "turn.start", threadId: "thread-1", prompt: "finish quickly" }));
+  await waitForMessage(ws, (message) => message.id === "thread-activity-turn");
+  const activity = await waitForMessage<Record<string, unknown>>(
+    ws,
+    (message) => message.type === "thread.activity" && message.method === "turn/completed"
+  );
+  expect(activity).toMatchObject({
+    type: "thread.activity",
+    threadId: "thread-1",
+    method: "turn/completed",
+    requiresRefresh: true
+  });
+
+  await closeSocket(ws);
+  const replayWs = await connect(`${wsUrl}?afterEventId=0`, token);
+  const ready = await waitForMessage<Record<string, unknown>>(replayWs, (message) => message.type === "bridge.ready");
+  expect(ready.oldestEventId).toEqual(expect.any(Number));
+  const replayGap = await waitForMessage<Record<string, unknown>>(replayWs, (message) => message.type === "sync.replay_gap");
+  expect(replayGap).toMatchObject({
+    type: "sync.replay_gap",
+    requestedAfterEventId: 0,
+    requiresRefresh: true
   });
 
   replayWs.close();
@@ -1232,6 +1313,16 @@ test("persists iPhone-authored prompts after turn start even before completion",
     })
   );
   await waitForMessage(ws, (message) => message.id === "mobile-persist-before-complete");
+  const persisted = await waitForMessage<Record<string, unknown>>(
+    ws,
+    (message) => message.type === "mobile.turn.persisted" && message.threadId === "recent-thread-1"
+  );
+  expect(persisted).toMatchObject({
+    type: "mobile.turn.persisted",
+    threadId: "recent-thread-1",
+    injected: true
+  });
+  expect(JSON.stringify(persisted)).not.toContain(prompt);
 
   const inject = await waitForReport(reportFile, (entry) => entry.message.method === "thread/inject_items");
   expect(inject.message).toMatchObject({

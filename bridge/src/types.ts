@@ -192,6 +192,7 @@ export type MobileResponse =
       bridgeVersion: string;
       serverTime: string;
       lastEventId: number;
+      oldestEventId: number;
     }
   | {
       id?: string;
@@ -216,12 +217,57 @@ export type MobileResponse =
       params?: JsonValue;
     }
   | {
+      type: "thread.activity";
+      eventId: number;
+      replayed?: boolean;
+      threadId: string;
+      method: string;
+      turnId?: string;
+      itemId?: string;
+      requiresRefresh: boolean;
+      serverTime: string;
+    }
+  | {
+      type: "sync.replay_gap";
+      eventId: number;
+      replayed?: boolean;
+      requestedAfterEventId: number;
+      oldestEventId: number;
+      lastEventId: number;
+      requiresRefresh: boolean;
+    }
+  | {
+      type: "mobile.turn.received" | "mobile.turn.persisted" | "mobile.turn.persist_failed";
+      eventId: number;
+      replayed?: boolean;
+      threadId: string;
+      turnId?: string;
+      kind?: string;
+      promptBytes?: number;
+      attachmentCount?: number;
+      queued?: boolean;
+      cwdKnown?: boolean;
+      injected?: boolean;
+      alreadyPresent?: boolean;
+      itemCount?: number;
+      message?: string;
+    }
+  | {
       type: "approval.requested";
       eventId: number;
       replayed?: boolean;
       approvalId: string;
       method: string;
       params?: JsonValue;
+    }
+  | {
+      type: "approval.responded" | "approval.resolved";
+      eventId: number;
+      replayed?: boolean;
+      approvalId: string;
+      method: string;
+      decision: string;
+      reason?: string;
     };
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

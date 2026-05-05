@@ -418,6 +418,15 @@ struct AppCopy: Equatable {
     var syncNowTitle: String { text("Sync now", "지금 동기화") }
     var notificationReadyTitle: String { text("Approval alerts ready", "승인 알림 준비됨") }
     var notificationReadyDetail: String { text("maludex can alert you when approvals arrive in the background.", "백그라운드에서 승인이 필요할 때 maludex가 알려줄 수 있습니다.") }
+    var setupChecklistTitle: String { text("Setup checklist", "설정 체크리스트") }
+    var setupBridgeStepTitle: String { text("Mac bridge", "Mac 브릿지") }
+    var setupBridgeStepDetail: String { text("Connect to a private localhost, Tailscale, or TLS endpoint.", "localhost, Tailscale 또는 TLS 엔드포인트에 연결하세요.") }
+    var setupPairingStepTitle: String { text("iPhone pairing", "iPhone 페어링") }
+    var setupPairingStepDetail: String { text("Pair with a QR capability token and keep it private.", "QR 권한 토큰으로 페어링하고 비공개로 보관하세요.") }
+    var setupProjectStepTitle: String { text("Project selected", "프로젝트 선택") }
+    var setupProjectStepDetail: String { text("Choose the workspace where Codex should run.", "Codex가 실행될 워크스페이스를 선택하세요.") }
+    var setupNotificationsStepTitle: String { text("Approval alerts", "승인 알림") }
+    var setupNotificationsStepDetail: String { text("Enable notifications for background approval requests.", "백그라운드 승인 요청 알림을 허용하세요.") }
     var onboardingTitle: String { text("Set up maludex", "maludex 시작하기") }
     var onboardingSubtitle: String { text("A safer iPhone control surface for your own Mac/Codex workflow.", "내 Mac/Codex 워크플로를 iPhone에서 더 안전하게 제어합니다.") }
     var onboardingLocalTitle: String { text("Choose your route", "연결 경로 선택") }
@@ -439,6 +448,11 @@ struct AppCopy: Equatable {
     var pendingTitle: String { text("Pending", "대기 중") }
     var approvalRespondingTitle: String { text("Waiting for bridge", "브릿지 확인 대기") }
     var approvalRespondingDetail: String { text("Your response was sent. Keep this card open until the Mac bridge confirms it.", "응답을 보냈습니다. Mac 브릿지가 확인할 때까지 이 카드를 유지합니다.") }
+    var approvalConfirmedTitle: String { text("Approval confirmed", "승인 확인됨") }
+    var approvalDeclinedTitle: String { text("Approval denied", "승인 거부됨") }
+    var mobileTurnReceivedTitle: String { text("iPhone request delivered", "iPhone 요청 전달됨") }
+    var mobileTurnPersistedTitle: String { text("Saved to desktop history", "데스크톱 기록에 저장됨") }
+    var mobileTurnPersistFailedTitle: String { text("Desktop history save failed", "데스크톱 기록 저장 실패") }
     var approveTitle: String { text("Approve", "승인") }
     var denyTitle: String { text("Deny", "거부") }
     var queueTitle: String { text("Queue", "대기열") }
@@ -631,7 +645,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.8.0"
+let maludexClientVersion = "0.9.0"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
@@ -810,6 +824,98 @@ func transcriptSyncPresentation(
         detail: transcriptSyncStatusTitle(lastSyncedAt: lastSyncedAt, isRefreshing: false, now: now, language: language),
         isDelayed: false
     )
+}
+
+struct SetupChecklistItem: Equatable, Identifiable {
+    let id: String
+    let title: String
+    let detail: String
+    let isComplete: Bool
+    let systemImage: String
+}
+
+func setupChecklistItems(
+    language: AppLanguage,
+    isConnected: Bool,
+    hasPairing: Bool,
+    hasProject: Bool,
+    notificationsAllowed: Bool
+) -> [SetupChecklistItem] {
+    let copy = AppCopy(language: language)
+    return [
+        SetupChecklistItem(
+            id: "bridge",
+            title: copy.setupBridgeStepTitle,
+            detail: copy.setupBridgeStepDetail,
+            isComplete: isConnected,
+            systemImage: "network"
+        ),
+        SetupChecklistItem(
+            id: "pairing",
+            title: copy.setupPairingStepTitle,
+            detail: copy.setupPairingStepDetail,
+            isComplete: hasPairing,
+            systemImage: "qrcode.viewfinder"
+        ),
+        SetupChecklistItem(
+            id: "project",
+            title: copy.setupProjectStepTitle,
+            detail: copy.setupProjectStepDetail,
+            isComplete: hasProject,
+            systemImage: "folder"
+        ),
+        SetupChecklistItem(
+            id: "notifications",
+            title: copy.setupNotificationsStepTitle,
+            detail: copy.setupNotificationsStepDetail,
+            isComplete: notificationsAllowed,
+            systemImage: "bell.badge"
+        )
+    ]
+}
+
+func mobileTurnStatusSystemMessage(type: String, language: AppLanguage, promptBytes: Int?, attachmentCount: Int?) -> String {
+    switch type {
+    case "mobile.turn.received":
+        switch language {
+        case .english:
+            let bytes = promptBytes.map { "\($0) bytes" } ?? "prompt metadata"
+            let attachments = attachmentCount.map { ", \($0) attachments" } ?? ""
+            return "iPhone request delivered to the Mac bridge. \(bytes)\(attachments)."
+        case .korean:
+            let bytes = promptBytes.map { "\($0)바이트" } ?? "프롬프트 메타데이터"
+            let attachments = attachmentCount.map { ", 첨부 \($0)개" } ?? ""
+            return "iPhone 요청이 Mac 브릿지에 전달되었습니다. \(bytes)\(attachments)."
+        }
+    case "mobile.turn.persisted":
+        return textByLanguage(
+            "iPhone request was saved into the desktop chat history.",
+            "iPhone 요청이 데스크톱 채팅 기록에 저장되었습니다.",
+            language: language
+        )
+    case "mobile.turn.persist_failed":
+        return textByLanguage(
+            "iPhone request reached Codex, but desktop history save needs attention.",
+            "iPhone 요청은 Codex에 전달됐지만 데스크톱 기록 저장 확인이 필요합니다.",
+            language: language
+        )
+    default:
+        return textByLanguage("Mobile request updated.", "모바일 요청 상태가 업데이트되었습니다.", language: language)
+    }
+}
+
+func approvalResolutionSystemMessage(decision: String, reason: String?, language: AppLanguage) -> String {
+    if reason == "confirmed" {
+        return textByLanguage(
+            "Approval confirmed by the Mac bridge.",
+            "Mac 브릿지가 승인을 확인했습니다.",
+            language: language
+        )
+    }
+    if decision == "accept" || decision == "acceptForSession" {
+        return textByLanguage("Approval sent to the Mac bridge.", "승인이 Mac 브릿지로 전송되었습니다.", language: language)
+    }
+    return textByLanguage("Approval was denied or cancelled.", "승인이 거부되었거나 취소되었습니다.", language: language)
 }
 
 private func textByLanguage(_ english: String, _ korean: String, language: AppLanguage) -> String {
