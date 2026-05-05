@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1 - 2026-05-05
+
+- Rebuild the README demo GIF as a continuous animation from real Xcode iOS Simulator video instead of a static cut reel.
+- Skip first-run onboarding while the app is launched in README demo mode so the capture shows the actual chat UI.
+
 ## 0.9.0 - 2026-05-05
 
 - Add replay-gap bridge notifications with oldest/latest event IDs so reconnecting iPhone clients can catch up safely.
