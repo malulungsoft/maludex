@@ -411,10 +411,25 @@ struct AppCopy: Equatable {
     var transcriptSyncTitle: String { text("Transcript sync", "대화 동기화") }
     var transcriptSyncingTitle: String { text("Syncing...", "동기화 중...") }
     var transcriptNotSyncedTitle: String { text("Not synced yet", "아직 동기화 전") }
+    var transcriptUpToDateTitle: String { text("Up to date", "최신 상태") }
+    var transcriptDelayedTitle: String { text("Sync delayed", "동기화 지연") }
+    var transcriptRecoveredTitle: String { text("History recovered", "기록 복구됨") }
+    var transcriptCatchingUpTitle: String { text("Catching up", "따라잡는 중") }
     var syncNowTitle: String { text("Sync now", "지금 동기화") }
+    var notificationReadyTitle: String { text("Approval alerts ready", "승인 알림 준비됨") }
+    var notificationReadyDetail: String { text("maludex can alert you when approvals arrive in the background.", "백그라운드에서 승인이 필요할 때 maludex가 알려줄 수 있습니다.") }
+    var onboardingTitle: String { text("Set up maludex", "maludex 시작하기") }
+    var onboardingSubtitle: String { text("A safer iPhone control surface for your own Mac/Codex workflow.", "내 Mac/Codex 워크플로를 iPhone에서 더 안전하게 제어합니다.") }
+    var onboardingLocalTitle: String { text("Choose your route", "연결 경로 선택") }
+    var onboardingLocalDetail: String { text("Use localhost for Simulator, Tailscale for private remote access, or carefully configured Nginx/TLS.", "시뮬레이터는 localhost, 외부 접속은 Tailscale, 필요 시 Nginx/TLS를 신중히 사용하세요.") }
+    var onboardingPairTitle: String { text("Pair with a QR token", "QR 토큰으로 페어링") }
+    var onboardingPairDetail: String { text("The QR is a capability token. Do not post it in screenshots or chats.", "QR에는 권한 토큰이 들어 있습니다. 스크린샷이나 채팅에 공유하지 마세요.") }
+    var onboardingSyncTitle: String { text("Know the sync boundary", "동기화 한계 이해") }
+    var onboardingSyncDetail: String { text("maludex catches up desktop history, but it is not a perfect shared cloud workspace.", "maludex는 데스크톱 기록을 따라잡지만 완전한 공유 클라우드 워크스페이스는 아닙니다.") }
     var streamingTitle: String { text("Streaming", "응답 중") }
     var copyTitle: String { text("Copy", "복사") }
     var copyTextTitle: String { text("Copy text", "텍스트 복사") }
+    var copyCodeTitle: String { text("Copy code", "코드 복사") }
     var collapseTitle: String { text("Collapse", "접기") }
     var expandTitle: String { text("Expand", "펼치기") }
     var collapseMessageTitle: String { text("Collapse message", "메시지 접기") }
@@ -616,7 +631,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.7.5"
+let maludexClientVersion = "0.8.0"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
@@ -704,6 +719,103 @@ func transcriptSyncStatusTitle(
     }
 }
 
+struct TranscriptSyncPresentation: Equatable {
+    let title: String
+    let detail: String
+    let isDelayed: Bool
+}
+
+func transcriptSyncPresentation(
+    lastSyncedAt: Date?,
+    isRefreshing: Bool,
+    now: Date,
+    language: AppLanguage,
+    isConnected: Bool,
+    hasThread: Bool,
+    recoveredItemCount: Int,
+    missedEventCount: Int
+) -> TranscriptSyncPresentation {
+    let copy = AppCopy(language: language)
+    guard hasThread else {
+        return TranscriptSyncPresentation(
+            title: copy.transcriptNotSyncedTitle,
+            detail: copy.noActiveThread,
+            isDelayed: false
+        )
+    }
+
+    if isRefreshing {
+        return TranscriptSyncPresentation(
+            title: copy.transcriptSyncingTitle,
+            detail: textByLanguage("Checking desktop history...", "데스크톱 기록을 확인 중...", language: language),
+            isDelayed: false
+        )
+    }
+
+    if recoveredItemCount > 0 {
+        let detail: String
+        switch language {
+        case .english:
+            detail = missedEventCount > 0
+                ? "Recovered \(recoveredItemCount) items after \(missedEventCount) missed events."
+                : "Recovered \(recoveredItemCount) desktop items."
+        case .korean:
+            detail = missedEventCount > 0
+                ? "누락 이벤트 \(missedEventCount)개 이후 기록 \(recoveredItemCount)개를 복구했습니다."
+                : "데스크톱 기록 \(recoveredItemCount)개를 복구했습니다."
+        }
+        return TranscriptSyncPresentation(title: copy.transcriptRecoveredTitle, detail: detail, isDelayed: false)
+    }
+
+    if missedEventCount > 0 {
+        return TranscriptSyncPresentation(
+            title: copy.transcriptCatchingUpTitle,
+            detail: textByLanguage(
+                "Missed \(missedEventCount) desktop events. Refreshing history.",
+                "데스크톱 이벤트 \(missedEventCount)개를 놓쳐 기록을 다시 확인합니다.",
+                language: language
+            ),
+            isDelayed: false
+        )
+    }
+
+    guard let lastSyncedAt else {
+        return TranscriptSyncPresentation(
+            title: copy.transcriptNotSyncedTitle,
+            detail: isConnected
+                ? textByLanguage("Tap refresh to load desktop history.", "새로고침으로 데스크톱 기록을 불러오세요.", language: language)
+                : textByLanguage("Connect to the Mac bridge first.", "먼저 Mac 브릿지에 연결하세요.", language: language),
+            isDelayed: false
+        )
+    }
+
+    let age = max(0, now.timeIntervalSince(lastSyncedAt))
+    let ageText = syncRelativeTime(from: lastSyncedAt, now: now, language: language)
+    if !isConnected {
+        return TranscriptSyncPresentation(
+            title: copy.cannotConnectTitle,
+            detail: textByLanguage("Last synced \(ageText).", "\(ageText) 동기화됨.", language: language),
+            isDelayed: true
+        )
+    }
+    if age >= 45 {
+        return TranscriptSyncPresentation(
+            title: copy.transcriptDelayedTitle,
+            detail: textByLanguage("Last synced \(ageText). Tap refresh to catch up.", "마지막 동기화 \(ageText). 새로고침으로 따라잡으세요.", language: language),
+            isDelayed: true
+        )
+    }
+    return TranscriptSyncPresentation(
+        title: copy.transcriptUpToDateTitle,
+        detail: transcriptSyncStatusTitle(lastSyncedAt: lastSyncedAt, isRefreshing: false, now: now, language: language),
+        isDelayed: false
+    )
+}
+
+private func textByLanguage(_ english: String, _ korean: String, language: AppLanguage) -> String {
+    language == .korean ? korean : english
+}
+
 private func syncRelativeTime(from date: Date, now: Date, language: AppLanguage) -> String {
     let elapsed = max(0, Int(now.timeIntervalSince(date)))
     switch language {
@@ -737,6 +849,43 @@ private func syncRelativeTime(from date: Date, now: Date, language: AppLanguage)
         }
         return "\(hours / 24)일 전"
     }
+}
+
+struct FencedCodeBlock: Equatable, Identifiable {
+    let id: Int
+    let language: String?
+    let code: String
+}
+
+func fencedCodeBlocks(in text: String) -> [FencedCodeBlock] {
+    var blocks: [FencedCodeBlock] = []
+    var currentLanguage: String?
+    var currentLines: [String] = []
+    var isInsideFence = false
+
+    for rawLine in text.components(separatedBy: .newlines) {
+        let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("```") {
+            if isInsideFence {
+                let code = currentLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !code.isEmpty {
+                    blocks.append(FencedCodeBlock(id: blocks.count, language: currentLanguage, code: code))
+                }
+                currentLanguage = nil
+                currentLines = []
+                isInsideFence = false
+            } else {
+                let language = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+                currentLanguage = language.isEmpty ? nil : language
+                currentLines = []
+                isInsideFence = true
+            }
+        } else if isInsideFence {
+            currentLines.append(rawLine)
+        }
+    }
+
+    return blocks
 }
 
 func shouldRefreshActiveChat(

@@ -94,6 +94,8 @@ final class BridgeClient: ObservableObject {
     @Published private(set) var isLoadingOlderTranscript = false
     @Published private(set) var isRefreshingActiveChat = false
     @Published private(set) var lastTranscriptSyncAt: Date?
+    @Published private(set) var transcriptSyncRecoveredItemCount = 0
+    @Published private(set) var transcriptSyncMissedEventCount = 0
     @Published private(set) var hasOlderTranscript = false
     @Published private(set) var hasSavedPairing = false
     @Published private(set) var savedPairingLabel: String?
@@ -290,6 +292,8 @@ final class BridgeClient: ObservableObject {
         activeTurnLastEventAt = nil
         pendingActiveChatRefreshes.removeAll()
         isRefreshingActiveChat = false
+        transcriptSyncRecoveredItemCount = 0
+        transcriptSyncMissedEventCount = 0
         do {
             try stateStore.savePairing(pairing)
             refreshSavedPairingState()
@@ -457,6 +461,8 @@ final class BridgeClient: ObservableObject {
         isLoadingOlderTranscript = false
         isRefreshingActiveChat = false
         lastTranscriptSyncAt = nil
+        transcriptSyncRecoveredItemCount = 0
+        transcriptSyncMissedEventCount = 0
         projects.removeAll()
         projectRoots.removeAll()
         models.removeAll()
@@ -1333,6 +1339,7 @@ final class BridgeClient: ObservableObject {
             return
         }
 
+        let previousEntries = transcriptStore.entries
         let entries: [TranscriptEntry] = result["transcript"]?.arrayValue?.compactMap { value in
             guard let object = value.objectValue else { return nil }
             return RemoteTranscriptEntry(json: object)?.transcriptEntry
@@ -1345,8 +1352,13 @@ final class BridgeClient: ObservableObject {
         }
         lastTranscriptSyncAt = Date()
         if transcriptStore.replaceIfChanged(with: entries) {
+            transcriptSyncRecoveredItemCount = max(0, entries.count - previousEntries.count)
+            transcriptSyncMissedEventCount = 0
             publishTranscript()
             appendEvent("chat", "synced \(id)")
+        } else {
+            transcriptSyncRecoveredItemCount = 0
+            transcriptSyncMissedEventCount = 0
         }
     }
 
@@ -1508,6 +1520,8 @@ final class BridgeClient: ObservableObject {
             activeTurnId = nil
             activeTurnLastEventAt = nil
             lastTranscriptSyncAt = nil
+            transcriptSyncRecoveredItemCount = 0
+            transcriptSyncMissedEventCount = 0
             promptQueue.removeAll()
             transcriptStore.addSystemMessage("Thread started: \(shortThreadId(id))")
             publishTranscript()
@@ -1520,7 +1534,16 @@ final class BridgeClient: ObservableObject {
         guard let number = object["eventId"]?.numberValue else {
             return
         }
-        lastEventId = max(lastEventId, Int(number))
+        let incoming = Int(number)
+        if lastEventId > 0, incoming > lastEventId + 1 {
+            transcriptSyncMissedEventCount += incoming - lastEventId - 1
+            _ = refreshActiveChatIfNeeded(
+                force: true,
+                allowActiveTurnRefresh: true,
+                bypassMinimumInterval: true
+            )
+        }
+        lastEventId = max(lastEventId, incoming)
         persistSnapshot()
     }
 
@@ -1642,6 +1665,8 @@ final class BridgeClient: ObservableObject {
         activeTurnLastEventAt = nil
         isRefreshingActiveChat = false
         lastTranscriptSyncAt = nil
+        transcriptSyncRecoveredItemCount = 0
+        transcriptSyncMissedEventCount = 0
         selectedProjectPath = ""
         selectedModel = ""
         selectedReasoningEffort = ReasoningEffortOption.fallback
@@ -1709,6 +1734,8 @@ final class BridgeClient: ObservableObject {
         activeTurnLastEventAt = Date()
         isRefreshingActiveChat = false
         lastTranscriptSyncAt = Date(timeIntervalSinceNow: -45)
+        transcriptSyncRecoveredItemCount = 2
+        transcriptSyncMissedEventCount = 0
         promptDraft = "Ask maludex to keep the iPhone transcript in sync..."
         projectRoots = [
             ProjectRootOption(path: "/Users/malulung/Documents", name: "Documents"),
@@ -1773,7 +1800,7 @@ final class BridgeClient: ObservableObject {
         ]
         approvals = []
         diagnostics = BridgeDiagnostics(json: [
-            "bridgeVersion": .string("0.7.5"),
+            "bridgeVersion": .string("0.8.0"),
             "protocolVersion": .number(1),
             "minClientProtocolVersion": .number(1),
             "host": .string("100.75.40.51"),
@@ -1863,7 +1890,7 @@ final class BridgeClient: ObservableObject {
                 )
             ]
             self.diagnostics = BridgeDiagnostics(json: [
-                "bridgeVersion": .string("0.7.5"),
+                "bridgeVersion": .string("0.8.0"),
                 "protocolVersion": .number(1),
                 "minClientProtocolVersion": .number(1),
                 "host": .string("100.75.40.51"),

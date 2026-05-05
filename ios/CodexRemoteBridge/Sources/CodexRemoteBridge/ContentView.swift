@@ -134,9 +134,11 @@ private enum SpeechInputError: LocalizedError {
 struct ContentView: View {
     @EnvironmentObject private var bridge: BridgeClient
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("hasSeenMaludexOnboardingV1") private var hasSeenOnboarding = false
     @State private var pairingText = ""
     @State private var scannerPresented = false
     @State private var attemptedSavedConnect = false
+    @State private var onboardingPresented = false
 
     var body: some View {
         NavigationStack {
@@ -174,9 +176,18 @@ struct ContentView: View {
                 }
                 .ignoresSafeArea()
             }
+            .sheet(isPresented: $onboardingPresented) {
+                OnboardingSheet {
+                    hasSeenOnboarding = true
+                    onboardingPresented = false
+                }
+            }
             .onAppear {
                 bridge.startDemoPlaybackIfNeeded()
                 bridge.setAppIsActive(scenePhase == .active)
+                if !hasSeenOnboarding {
+                    onboardingPresented = true
+                }
                 guard !attemptedSavedConnect else { return }
                 attemptedSavedConnect = true
                 bridge.connectSavedPairingIfAvailable()
@@ -211,6 +222,75 @@ struct ContentView: View {
         } catch {
             bridge.lastError = error.localizedDescription
         }
+    }
+}
+
+private struct OnboardingSheet: View {
+    @EnvironmentObject private var bridge: BridgeClient
+    let finish: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            BrandMark(size: 54)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(bridge.copy.onboardingTitle)
+                    .font(.largeTitle.weight(.bold))
+                    .foregroundStyle(AppPalette.ink)
+                Text(bridge.copy.onboardingSubtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(spacing: 12) {
+                OnboardingStep(icon: "point.3.connected.trianglepath.dotted", title: bridge.copy.onboardingLocalTitle, detail: bridge.copy.onboardingLocalDetail)
+                OnboardingStep(icon: "qrcode.viewfinder", title: bridge.copy.onboardingPairTitle, detail: bridge.copy.onboardingPairDetail)
+                OnboardingStep(icon: "arrow.triangle.2.circlepath", title: bridge.copy.onboardingSyncTitle, detail: bridge.copy.onboardingSyncDetail)
+            }
+
+            Spacer(minLength: 0)
+
+            Button(action: finish) {
+                Label(bridge.copy.doneButton, systemImage: "checkmark.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        }
+        .padding(22)
+        .presentationDetents([.large])
+        .background(AppPalette.background)
+    }
+}
+
+private struct OnboardingStep: View {
+    let icon: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(AppPalette.accent)
+                .frame(width: 34, height: 34)
+                .background(AppPalette.userBubble, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(AppPalette.ink)
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(AppPalette.panel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(AppPalette.line, lineWidth: 1)
+        )
     }
 }
 
@@ -332,6 +412,13 @@ private struct ProjectScreen: View {
 
                 if !bridge.threadId.isEmpty {
                     TranscriptSyncBar()
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 6)
+                        .transition(.opacity)
+                }
+
+                if bridge.notificationAuthorizationStatus == .denied {
+                    NotificationRecoveryBanner()
                         .padding(.horizontal, 12)
                         .padding(.bottom, 6)
                         .transition(.opacity)
@@ -765,23 +852,26 @@ private struct TranscriptSyncBar: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 15)) { timeline in
+            let presentation = transcriptSyncPresentation(
+                lastSyncedAt: bridge.lastTranscriptSyncAt,
+                isRefreshing: bridge.isRefreshingActiveChat,
+                now: timeline.date,
+                language: bridge.selectedLanguage,
+                isConnected: bridge.isConnected,
+                hasThread: !bridge.threadId.isEmpty,
+                recoveredItemCount: bridge.transcriptSyncRecoveredItemCount,
+                missedEventCount: bridge.transcriptSyncMissedEventCount
+            )
             HStack(spacing: 8) {
                 Image(systemName: bridge.isRefreshingActiveChat ? "arrow.triangle.2.circlepath" : "checkmark.circle")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(bridge.isRefreshingActiveChat ? AppPalette.warning : AppPalette.success)
+                    .foregroundStyle(presentation.isDelayed ? AppPalette.warning : AppPalette.success)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(bridge.copy.transcriptSyncTitle)
+                    Text(presentation.title)
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.secondary)
-                    Text(
-                        transcriptSyncStatusTitle(
-                            lastSyncedAt: bridge.lastTranscriptSyncAt,
-                            isRefreshing: bridge.isRefreshingActiveChat,
-                            now: timeline.date,
-                            language: bridge.selectedLanguage
-                        )
-                    )
+                    Text(presentation.detail)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppPalette.ink)
                     .lineLimit(1)
@@ -817,6 +907,44 @@ private struct TranscriptSyncBar: View {
                     .stroke(AppPalette.line, lineWidth: 1)
             )
         }
+    }
+}
+
+private struct NotificationRecoveryBanner: View {
+    @EnvironmentObject private var bridge: BridgeClient
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "bell.badge")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppPalette.warning)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(bridge.copy.notificationsBlockedTitle)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppPalette.ink)
+                Text(bridge.copy.notificationsBlockedDetail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            Button {
+                openAppSettings()
+            } label: {
+                Image(systemName: "gearshape")
+                    .frame(width: 28, height: 28)
+                    .background(AppPalette.userBubble, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(bridge.copy.openAppSettingsTitle)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(AppPalette.panel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(AppPalette.warning.opacity(0.35), lineWidth: 1)
+        )
     }
 }
 
@@ -2077,6 +2205,8 @@ private struct TranscriptBubble: View {
                     .foregroundStyle(AppPalette.accent)
                     .accessibilityLabel(expanded ? bridge.copy.collapseMessageTitle : bridge.copy.expandMessageTitle)
                 }
+
+                CodeBlockCopyStrip(blocks: fencedCodeBlocks(in: entry.text))
             }
 
             TranscriptAttachmentGrid(attachments: entry.attachments)
@@ -2147,6 +2277,35 @@ private struct TranscriptBubble: View {
     }
 }
 
+private struct CodeBlockCopyStrip: View {
+    @EnvironmentObject private var bridge: BridgeClient
+    let blocks: [FencedCodeBlock]
+
+    var body: some View {
+        if !blocks.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(blocks) { block in
+                        Button {
+                            UIPasteboard.general.string = block.code
+                        } label: {
+                            Label(block.language ?? bridge.copy.copyCodeTitle, systemImage: "curlybraces")
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(AppPalette.input, in: Capsule())
+                        .overlay(Capsule().stroke(AppPalette.line, lineWidth: 1))
+                        .accessibilityLabel(bridge.copy.copyCodeTitle)
+                    }
+                }
+            }
+        }
+    }
+}
+
 private struct TranscriptAttachmentGrid: View {
     let attachments: [TranscriptAttachment]
 
@@ -2164,6 +2323,7 @@ private struct TranscriptAttachmentGrid: View {
 
 private struct TranscriptAttachmentView: View {
     let attachment: TranscriptAttachment
+    @State private var previewImagePresented = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -2178,6 +2338,9 @@ private struct TranscriptAttachmentView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(AppPalette.line, lineWidth: 1)
                     )
+                    .onTapGesture {
+                        previewImagePresented = true
+                    }
             }
 
             HStack(spacing: 8) {
@@ -2201,6 +2364,36 @@ private struct TranscriptAttachmentView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(AppPalette.line, lineWidth: 1)
             )
+        }
+        .sheet(isPresented: $previewImagePresented) {
+            if let image = attachment.previewImage {
+                ImagePreviewSheet(image: image)
+            }
+        }
+    }
+}
+
+private struct ImagePreviewSheet: View {
+    let image: UIImage
+    @EnvironmentObject private var bridge: BridgeClient
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView([.horizontal, .vertical]) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .padding()
+            }
+            .background(AppPalette.background)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(bridge.copy.doneButton) {
+                        dismiss()
+                    }
+                }
+            }
         }
     }
 }

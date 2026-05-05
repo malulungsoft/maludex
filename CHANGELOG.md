@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0 - 2026-05-05
+
+- Add Desktop Sync 2.0 status states for up-to-date, delayed, catching-up, and recovered transcript updates.
+- Detect reconnect event gaps on iPhone and trigger an immediate bounded desktop transcript catch-up refresh.
+- Add a Control Center Update action that pulls the repo, reinstalls dependencies, rebuilds, and restarts the bridge when versions drift.
+- Add a first-run iPhone onboarding flow for private routes, QR token safety, and desktop sync expectations.
+- Improve iPhone chat UX with notification-permission recovery, one-tap fenced-code copying, and tap-to-expand image attachments.
+
 ## 0.7.5 - 2026-05-05
 
 - Add an iPhone transcript sync status bar with last-synced age and a manual refresh action.

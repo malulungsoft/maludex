@@ -54,6 +54,8 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertEqual(ControlCenterCopy(language: .korean).copyQRImageButton, "QR 이미지 복사")
         XCTAssertEqual(ControlCenterCopy(language: .english).nextStepTitle, "Recommended Next Step")
         XCTAssertEqual(ControlCenterCopy(language: .korean).recommendedActionTitle("repair"), "복구")
+        XCTAssertEqual(ControlCenterCopy(language: .english).updateButton, "Update")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).recommendedActionTitle("update"), "업데이트")
     }
 
     func testDecodesHealthyDoctorReport() throws {
@@ -211,6 +213,15 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertEqual(
             runner.mobileHandoffCommand(limit: 5),
             "node dist/bridge/src/mobile-handoff-cli.js --json --limit 5"
+        )
+    }
+
+    func testDoctorRunnerExposesUpdateCommand() {
+        let runner = DoctorRunner(repoRoot: URL(fileURLWithPath: "/Users/example/maludex"))
+
+        XCTAssertEqual(
+            runner.updateCommand,
+            "git pull --ff-only && npm ci && npm run build && node dist/bridge/src/doctor-cli.js --restart --json"
         )
     }
 }
