@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.5 - 2026-05-05
+
+- Add an iPhone transcript sync status bar with last-synced age and a manual refresh action.
+- Improve active-chat catch-up by allowing stale active turns to recover with a bounded desktop transcript refresh.
+- Rework README installation guidance around the macOS Control Center, leaving terminal commands as a fallback path.
+
 ## 0.7.4 - 2026-05-05
 
 - Replace the README hero media with a fast animated cut reel GIF built from real iOS Simulator capture frames.

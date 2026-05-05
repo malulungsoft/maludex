@@ -408,6 +408,10 @@ struct AppCopy: Equatable {
     var noSearchResultsTitle: String { text("No matches", "검색 결과 없음") }
     var noTranscriptTitle: String { text("No transcript yet", "아직 대화가 없습니다") }
     var noTranscriptSubtitle: String { text("Ready for a new turn.", "새 작업을 시작할 준비가 됐습니다.") }
+    var transcriptSyncTitle: String { text("Transcript sync", "대화 동기화") }
+    var transcriptSyncingTitle: String { text("Syncing...", "동기화 중...") }
+    var transcriptNotSyncedTitle: String { text("Not synced yet", "아직 동기화 전") }
+    var syncNowTitle: String { text("Sync now", "지금 동기화") }
     var streamingTitle: String { text("Streaming", "응답 중") }
     var copyTitle: String { text("Copy", "복사") }
     var copyTextTitle: String { text("Copy text", "텍스트 복사") }
@@ -612,7 +616,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.7.4"
+let maludexClientVersion = "0.7.5"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
@@ -678,6 +682,63 @@ func normalizedReconnectEventId(current: Int, serverLastEventId: Int) -> Int {
     serverLastEventId < current ? max(0, serverLastEventId) : current
 }
 
+func transcriptSyncStatusTitle(
+    lastSyncedAt: Date?,
+    isRefreshing: Bool,
+    now: Date,
+    language: AppLanguage
+) -> String {
+    let copy = AppCopy(language: language)
+    if isRefreshing {
+        return copy.transcriptSyncingTitle
+    }
+    guard let lastSyncedAt else {
+        return copy.transcriptNotSyncedTitle
+    }
+
+    switch language {
+    case .english:
+        return "Last synced \(syncRelativeTime(from: lastSyncedAt, now: now, language: language))"
+    case .korean:
+        return "\(syncRelativeTime(from: lastSyncedAt, now: now, language: language)) 동기화됨"
+    }
+}
+
+private func syncRelativeTime(from date: Date, now: Date, language: AppLanguage) -> String {
+    let elapsed = max(0, Int(now.timeIntervalSince(date)))
+    switch language {
+    case .english:
+        if elapsed < 5 {
+            return "just now"
+        }
+        if elapsed < 60 {
+            return "\(elapsed)s ago"
+        }
+        let minutes = elapsed / 60
+        if minutes < 60 {
+            return "\(minutes)m ago"
+        }
+        let hours = minutes / 60
+        if hours < 24 {
+            return "\(hours)h ago"
+        }
+        return "\(hours / 24)d ago"
+    case .korean:
+        if elapsed < 60 {
+            return "방금 전"
+        }
+        let minutes = elapsed / 60
+        if minutes < 60 {
+            return "\(minutes)분 전"
+        }
+        let hours = minutes / 60
+        if hours < 24 {
+            return "\(hours)시간 전"
+        }
+        return "\(hours / 24)일 전"
+    }
+}
+
 func shouldRefreshActiveChat(
     isConnected: Bool,
     threadId: String,
@@ -685,14 +746,29 @@ func shouldRefreshActiveChat(
     hasActiveTurn: Bool,
     now: Date,
     lastRefreshAt: Date?,
-    minimumInterval: TimeInterval
+    minimumInterval: TimeInterval,
+    activeTurnLastEventAt: Date? = nil,
+    activeTurnRecoveryInterval: TimeInterval = 45,
+    bypassMinimumInterval: Bool = false,
+    allowActiveTurnRefresh: Bool = false
 ) -> Bool {
     guard isConnected,
           !threadId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-          !isLoadingOlderTranscript,
-          !hasActiveTurn else {
+          !isLoadingOlderTranscript else {
         return false
     }
+
+    if hasActiveTurn && !allowActiveTurnRefresh {
+        guard let activeTurnLastEventAt,
+              now.timeIntervalSince(activeTurnLastEventAt) >= activeTurnRecoveryInterval else {
+            return false
+        }
+    }
+
+    if bypassMinimumInterval {
+        return true
+    }
+
     guard let lastRefreshAt else {
         return true
     }
