@@ -185,6 +185,9 @@ struct ControlCenterView: View {
             Text(copy.bridgeActionsTitle)
                 .font(.system(size: 18, weight: .bold))
             LazyVGrid(columns: actionColumns, spacing: 12) {
+                ActionButton(title: copy.updateButton, icon: "arrow.down.circle.fill", tint: Color(red: 0.08, green: 0.34, blue: 0.52), disabled: isBusy) {
+                    Task { await perform(.update) }
+                }
                 ActionButton(title: copy.repairButton, icon: "wrench.and.screwdriver", tint: Color(red: 0.02, green: 0.45, blue: 0.40), disabled: isBusy) {
                     Task { await perform(.repair) }
                 }
@@ -416,6 +419,8 @@ struct ControlCenterView: View {
 
     private func performPrimaryAction(_ action: String) async {
         switch action {
+        case "update":
+            await perform(.update)
         case "repair":
             await perform(.repair)
         case "start":

@@ -1,6 +1,6 @@
 export type DoctorSeverity = "info" | "warning" | "error";
 export type DoctorStatus = "healthy" | "warning" | "error";
-export type DoctorPrimaryAction = "none" | "start" | "repair";
+export type DoctorPrimaryAction = "none" | "start" | "repair" | "update";
 
 export type DoctorIssue = {
   code: string;
@@ -187,7 +187,7 @@ export function analyzeDoctorSnapshot(snapshot: DoctorSnapshot): DoctorReport {
 
   const status = statusForIssues(issues);
   const repairable = issues.some((issue) => issue.repairable);
-  const primaryAction = primaryActionFor(status, repairable, snapshot.launchAgent);
+  const primaryAction = primaryActionFor(status, repairable, snapshot.launchAgent, issues);
   return {
     status,
     repairable,
@@ -259,10 +259,14 @@ function statusForIssues(issues: DoctorIssue[]): DoctorStatus {
 function primaryActionFor(
   status: DoctorStatus,
   repairable: boolean,
-  launchAgent: LaunchAgentSnapshot | undefined
+  launchAgent: LaunchAgentSnapshot | undefined,
+  issues: DoctorIssue[]
 ): DoctorPrimaryAction {
   if (status === "healthy") {
     return "none";
+  }
+  if (issues.some((issue) => issue.code === "bridge_version_mismatch")) {
+    return "update";
   }
   if (!launchAgent?.exists) {
     return "repair";

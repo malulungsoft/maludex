@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.7.5`
+Current version: `v0.8.0`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs from a polished mobile UI.
 
@@ -16,26 +16,26 @@ The Mac bridge launches `codex app-server` over stdio JSONL and exposes a narrow
 - Pair an iPhone to one or more Macs with a QR capability token.
 - Start, steer, stop, and queue Codex turns from iPhone.
 - Pick projects, create projects, choose models, tune reasoning intelligence, and change permission mode.
-- Stream transcripts with attachments, searchable history, collapsed long bubbles, tap-to-copy text, approval cards, visible sync status, and manual transcript refresh.
+- Stream transcripts with attachments, searchable history, collapsed long bubbles, tap-to-copy text, approval cards, Desktop Sync 2.0 catch-up status, and manual transcript refresh.
 - Keep per-bridge drafts, quick prompts, local transcripts, and mobile handoff history across app restarts.
-- Use the macOS Control Center to repair stale bridge installs, rotate tokens, generate pairing QR codes, inspect diagnostics, and review iPhone-authored handoff prompts.
+- Use the macOS Control Center to update version-drifted installs, repair stale bridge installs, rotate tokens, generate pairing QR codes, inspect diagnostics, and review iPhone-authored handoff prompts.
 
 ## Status
 
-`v0.7.5` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
+`v0.8.0` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
 
 ## Demo
 
 <p align="center">
-  <img src="media/maludex-simulator-cuts.gif" alt="maludex v0.7.5 animated iOS Simulator UI tour" width="420">
+  <img src="media/maludex-simulator-cuts.gif" alt="maludex v0.8.0 animated iOS Simulator UI tour" width="420">
 </p>
 
 The demo above is an animated cut reel built from the actual SwiftUI app running in Xcode's iOS Simulator with `scripts/create-demo-video.sh`. The script launches the installed app with local demo state, records the real maludex UI with `simctl`, and rebuilds the GIF from captured Simulator frames. [Watch the MP4 version](media/maludex-simulator-demo.mp4).
 
 ## Features
 
-- SwiftUI iPhone client with QR pairing, camera scanner, connection status, searchable project/model pickers, project favorites, editable saved quick prompts, prompt composer, streaming transcript, last-synced transcript refresh, approval cards, attachment picker, voice input, and local transcript persistence.
-- SwiftUI macOS Control Center app for bridge health, recommended next steps, LaunchAgent repair, restart/start/stop, token rotation, pairing QR generation, and desktop review of iPhone-authored handoff prompts.
+- SwiftUI iPhone client with QR pairing, first-run onboarding, camera scanner, connection status, searchable project/model pickers, project favorites, editable saved quick prompts, prompt composer, streaming transcript, Desktop Sync 2.0 recovery status, approval cards, attachment picker, tap-to-expand image previews, one-tap code block copying, voice input, and local transcript persistence.
+- SwiftUI macOS Control Center app for bridge health, recommended next steps, one-click update, LaunchAgent repair, restart/start/stop, token rotation, pairing QR generation, and desktop review of iPhone-authored handoff prompts.
 - Multiple saved Mac bridges, each with its own Keychain token and per-bridge session state.
 - Node.js + TypeScript Mac bridge that translates between mobile WebSocket messages and Codex JSON-RPC over stdio JSONL.
 - Project listing and project creation under configured roots.
@@ -95,6 +95,7 @@ Then open **maludex Control Center** from `/Applications` or
 2. **Start** launches the bridge in the background.
 3. **Pair** shows a QR code for the iPhone app.
 4. **Refresh** re-checks bridge health after changes.
+5. **Update** appears when the running bridge is behind the repo; it pulls the latest code, reinstalls dependencies, rebuilds, and restarts the bridge.
 
 For physical iPhone testing away from local Wi-Fi, install Tailscale on both
 devices and run the Control Center's recommended repair/start flow after

@@ -100,6 +100,29 @@ describe("analyzeDoctorSnapshot", () => {
     expect(report.issues).toHaveLength(0);
   });
 
+  test("recommends update when the running bridge version is behind the repo", () => {
+    const report = analyzeDoctorSnapshot({
+      repoRoot: "/Users/malulung/Documents/maludex",
+      packageVersion: "0.8.0",
+      launchAgent: {
+        exists: true,
+        plistPath: "/Users/malulung/Library/LaunchAgents/com.maludex.bridge.plist",
+        workingDirectory: "/Users/malulung/Documents/maludex",
+        programArguments: ["/opt/homebrew/bin/node", "/Users/malulung/Documents/maludex/dist/bridge/src/index.js"],
+        state: "running"
+      },
+      bridge: {
+        reachable: true,
+        host: "127.0.0.1",
+        port: 8765,
+        bridgeVersion: "0.7.5"
+      }
+    });
+
+    expect(report.issues.map((issue) => issue.code)).toContain("bridge_version_mismatch");
+    expect(report.primaryAction).toBe("update");
+  });
+
   test("marks a LaunchAgent wildcard host as repairable before the bridge starts", () => {
     const report = analyzeDoctorSnapshot({
       repoRoot: "/Users/malulung/Documents/maludex",

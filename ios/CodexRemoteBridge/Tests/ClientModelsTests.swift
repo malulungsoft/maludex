@@ -151,6 +151,45 @@ struct ClientModelsTests {
             ) == "Syncing...",
             "sync status should expose refresh progress"
         )
+        let delayedSync = transcriptSyncPresentation(
+            lastSyncedAt: Date(timeIntervalSince1970: 900),
+            isRefreshing: false,
+            now: now,
+            language: .english,
+            isConnected: true,
+            hasThread: true,
+            recoveredItemCount: 0,
+            missedEventCount: 0
+        )
+        require(delayedSync.title == "Sync delayed", "sync presentation should flag stale desktop catch-up")
+        require(delayedSync.detail.contains("1m ago"), "sync presentation should include stale age")
+        let recoveredSync = transcriptSyncPresentation(
+            lastSyncedAt: Date(timeIntervalSince1970: 995),
+            isRefreshing: false,
+            now: now,
+            language: .korean,
+            isConnected: true,
+            hasThread: true,
+            recoveredItemCount: 3,
+            missedEventCount: 2
+        )
+        require(recoveredSync.title == "기록 복구됨", "Korean sync presentation should explain recovered history")
+        require(recoveredSync.detail.contains("3개"), "sync presentation should include recovered item count")
+
+        let codeBlocks = fencedCodeBlocks(in: """
+        설명
+        ```swift
+        print("hello")
+        ```
+        텍스트
+        ```
+        npm test
+        ```
+        """)
+        require(codeBlocks.count == 2, "fenced code blocks should be detected for one-tap copy")
+        require(codeBlocks.first?.language == "swift", "fenced code block language should decode")
+        require(codeBlocks.last?.code == "npm test", "fenced code block content should trim fence padding")
+        require(fencedCodeBlocks(in: "plain text").isEmpty, "plain transcript text should not create code copy actions")
 
         let searchableEntries = [
             TranscriptEntry(role: .user, text: "Please inspect the release checklist."),

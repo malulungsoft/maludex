@@ -49,6 +49,7 @@ public struct ControlCenterCopy: Equatable {
     public var checkingValue: String { text("Checking", "확인 중") }
     public var bridgeActionsTitle: String { text("Bridge Actions", "브릿지 작업") }
     public var repairButton: String { text("Repair", "복구") }
+    public var updateButton: String { text("Update", "업데이트") }
     public var restartButton: String { text("Restart", "재시작") }
     public var startButton: String { text("Start", "시작") }
     public var stopButton: String { text("Stop", "중지") }
@@ -92,6 +93,8 @@ public struct ControlCenterCopy: Equatable {
         switch action {
         case "repair":
             return repairButton
+        case "update":
+            return updateButton
         case "start":
             return startButton
         case "stop":

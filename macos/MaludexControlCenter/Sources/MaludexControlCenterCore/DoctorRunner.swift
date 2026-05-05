@@ -1,7 +1,8 @@
 import Foundation
 
-public enum ControlCenterAction {
+public enum ControlCenterAction: Equatable {
     case status
+    case update
     case repair
     case start
     case stop
@@ -18,6 +19,9 @@ public struct DoctorRunner {
     }
 
     public func run(_ action: ControlCenterAction = .status) async throws -> DoctorReport {
+        if action == .update {
+            try await updateRepository()
+        }
         try await ensureDoctorBuild()
         let output = try await runTool(
             command: "node",
@@ -47,6 +51,10 @@ public struct DoctorRunner {
         return "node dist/bridge/src/mobile-handoff-cli.js --json --limit \(boundedLimit)"
     }
 
+    public var updateCommand: String {
+        "git pull --ff-only && npm ci && npm run build && node dist/bridge/src/doctor-cli.js --restart --json"
+    }
+
     private func ensureDoctorBuild() async throws {
         let doctorCli = repoRoot.appending(path: "dist/bridge/src/doctor-cli.js")
         if FileManager.default.fileExists(atPath: doctorCli.path) {
@@ -63,6 +71,8 @@ public struct DoctorRunner {
         switch action {
         case .status:
             ["--json"]
+        case .update:
+            ["--restart", "--json"]
         case .repair:
             ["--repair", "--json"]
         case .start:
@@ -76,6 +86,12 @@ public struct DoctorRunner {
         case .rotateToken(let url):
             ["--rotate-token", "--qr-file", url.path, "--json"]
         }
+    }
+
+    private func updateRepository() async throws {
+        _ = try await runTool(command: "git", arguments: ["pull", "--ff-only"], currentDirectory: repoRoot)
+        _ = try await runTool(command: "npm", arguments: ["ci"], currentDirectory: repoRoot)
+        _ = try await runTool(command: "npm", arguments: ["run", "build"], currentDirectory: repoRoot)
     }
 
     private func runProcess(
