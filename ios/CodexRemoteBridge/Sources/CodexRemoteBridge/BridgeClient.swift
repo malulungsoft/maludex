@@ -92,6 +92,8 @@ final class BridgeClient: ObservableObject {
     @Published private(set) var promptQueue: [PromptQueueItem] = []
     @Published private(set) var activeTurnId: String?
     @Published private(set) var isLoadingOlderTranscript = false
+    @Published private(set) var isRefreshingActiveChat = false
+    @Published private(set) var lastTranscriptSyncAt: Date?
     @Published private(set) var hasOlderTranscript = false
     @Published private(set) var hasSavedPairing = false
     @Published private(set) var savedPairingLabel: String?
@@ -152,6 +154,13 @@ final class BridgeClient: ObservableObject {
         canSendPrompt && activeTurnId != nil
     }
 
+    var canRefreshActiveChat: Bool {
+        connectionState == .connected
+            && !threadId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !isLoadingOlderTranscript
+            && !isRefreshingActiveChat
+    }
+
     var selectedLanguage: AppLanguage {
         AppLanguage(rawValue: selectedLanguageCode) ?? .fallback
     }
@@ -197,7 +206,8 @@ final class BridgeClient: ObservableObject {
     private var nextId = 1
     private var lastEventId = 0
     private var lastActiveChatRefreshAt: Date?
-    private var pendingActiveChatRefreshIds: Set<String> = []
+    private var activeTurnLastEventAt: Date?
+    private var pendingActiveChatRefreshes: [String: ActiveChatRefreshRequest] = [:]
     private var pendingApprovalResponseIds: [String: String] = [:]
     private let transcriptStore = TranscriptStore()
     private let stateStore: DeviceStateStore
@@ -206,6 +216,10 @@ final class BridgeClient: ObservableObject {
     private var suppressPersistence = false
     private var appIsActive = true
     private var isDemoMode = false
+
+    private struct ActiveChatRefreshRequest {
+        let allowActiveTurnRefresh: Bool
+    }
 
     init(stateStore: DeviceStateStore = DeviceStateStore(), demoScenario: Bool = false) {
         self.stateStore = stateStore
@@ -255,6 +269,14 @@ final class BridgeClient: ObservableObject {
         }
     }
 
+    func refreshActiveChatNow() {
+        _ = refreshActiveChatIfNeeded(
+            force: true,
+            allowActiveTurnRefresh: true,
+            bypassMinimumInterval: true
+        )
+    }
+
     func connect(pairing: Pairing) {
         guard !isDemoMode else {
             loadConnectedDemoState()
@@ -265,7 +287,9 @@ final class BridgeClient: ObservableObject {
         closeSocket(setOffline: true)
         self.pairing = pairing
         lastActiveChatRefreshAt = nil
-        pendingActiveChatRefreshIds.removeAll()
+        activeTurnLastEventAt = nil
+        pendingActiveChatRefreshes.removeAll()
+        isRefreshingActiveChat = false
         do {
             try stateStore.savePairing(pairing)
             refreshSavedPairingState()
@@ -403,6 +427,8 @@ final class BridgeClient: ObservableObject {
         connectionState = .offline
         approvals.removeAll()
         clearPendingApprovalResponses()
+        activeTurnId = nil
+        activeTurnLastEventAt = nil
     }
 
     func forgetSavedDeviceState() {
@@ -429,6 +455,8 @@ final class BridgeClient: ObservableObject {
         transcriptCursor = nil
         hasOlderTranscript = false
         isLoadingOlderTranscript = false
+        isRefreshingActiveChat = false
+        lastTranscriptSyncAt = nil
         projects.removeAll()
         projectRoots.removeAll()
         models.removeAll()
@@ -831,7 +859,9 @@ final class BridgeClient: ObservableObject {
         approvals.removeAll()
         clearPendingApprovalResponses()
         activeTurnId = nil
+        activeTurnLastEventAt = nil
         isLoadingOlderTranscript = false
+        isRefreshingActiveChat = false
         appendEvent("bridge", "connection lost: \(error.localizedDescription)")
         if reportError {
             lastError = userFacingConnectionError(error.localizedDescription)
@@ -843,7 +873,8 @@ final class BridgeClient: ObservableObject {
         stopHeartbeat()
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
-        pendingActiveChatRefreshIds.removeAll()
+        pendingActiveChatRefreshes.removeAll()
+        isRefreshingActiveChat = false
         if setOffline {
             connectionState = .offline
         }
@@ -912,29 +943,30 @@ final class BridgeClient: ObservableObject {
     }
 
     @discardableResult
-    private func refreshActiveChatIfNeeded(force: Bool = false) -> Bool {
+    private func refreshActiveChatIfNeeded(
+        force: Bool = false,
+        allowActiveTurnRefresh: Bool = false,
+        bypassMinimumInterval: Bool = false
+    ) -> Bool {
         guard !isDemoMode else {
             return false
         }
         let now = Date()
         let shouldRefresh: Bool
-        if force {
-            shouldRefresh = connectionState == .connected
-                && !threadId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                && !isLoadingOlderTranscript
-                && activeTurnId == nil
-        } else {
-            shouldRefresh = shouldRefreshActiveChat(
-                isConnected: connectionState == .connected,
-                threadId: threadId,
-                isLoadingOlderTranscript: isLoadingOlderTranscript,
-                hasActiveTurn: activeTurnId != nil,
-                now: now,
-                lastRefreshAt: lastActiveChatRefreshAt,
-                minimumInterval: 12
-            )
-        }
-        guard shouldRefresh, pendingActiveChatRefreshIds.isEmpty else {
+        shouldRefresh = shouldRefreshActiveChat(
+            isConnected: connectionState == .connected,
+            threadId: threadId,
+            isLoadingOlderTranscript: isLoadingOlderTranscript,
+            hasActiveTurn: activeTurnId != nil,
+            now: now,
+            lastRefreshAt: force ? nil : lastActiveChatRefreshAt,
+            minimumInterval: 12,
+            activeTurnLastEventAt: activeTurnLastEventAt,
+            activeTurnRecoveryInterval: 45,
+            bypassMinimumInterval: bypassMinimumInterval,
+            allowActiveTurnRefresh: allowActiveTurnRefresh
+        )
+        guard shouldRefresh, pendingActiveChatRefreshes.isEmpty else {
             return false
         }
 
@@ -950,10 +982,24 @@ final class BridgeClient: ObservableObject {
             body["model"] = .string(selectedModel)
         }
         appendSessionSettings(to: &body, includeAutoCompact: true)
-        pendingActiveChatRefreshIds.insert(requestId)
+        pendingActiveChatRefreshes[requestId] = ActiveChatRefreshRequest(allowActiveTurnRefresh: allowActiveTurnRefresh)
+        isRefreshingActiveChat = true
         lastActiveChatRefreshAt = now
         send(body, reportErrors: false)
         return true
+    }
+
+    private func finishActiveChatRefresh(requestId: String?) -> ActiveChatRefreshRequest? {
+        let request: ActiveChatRefreshRequest?
+        if let requestId {
+            request = pendingActiveChatRefreshes.removeValue(forKey: requestId)
+        } else {
+            request = nil
+        }
+        if pendingActiveChatRefreshes.isEmpty {
+            isRefreshingActiveChat = false
+        }
+        return request
     }
 
     private func handle(_ message: URLSessionWebSocketTask.Message) {
@@ -1027,7 +1073,7 @@ final class BridgeClient: ObservableObject {
             }
             if let id = object["id"]?.stringValue,
                id.hasPrefix("ios-sync-chat") {
-                pendingActiveChatRefreshIds.remove(id)
+                _ = finishActiveChatRefresh(requestId: id)
                 return
             }
             if let id = object["id"]?.stringValue,
@@ -1272,16 +1318,14 @@ final class BridgeClient: ObservableObject {
         transcriptStore.replace(with: entries)
         publishTranscript()
         lastActiveChatRefreshAt = Date()
+        lastTranscriptSyncAt = Date()
         appendEvent("chat", "opened \(id)")
     }
 
     private func handleChatSynced(_ object: [String: JSONValue]) {
-        defer {
-            if let id = object["id"]?.stringValue {
-                pendingActiveChatRefreshIds.remove(id)
-            }
-        }
-        guard activeTurnId == nil,
+        let request = finishActiveChatRefresh(requestId: object["id"]?.stringValue)
+        let allowsActiveTurnRefresh = request?.allowActiveTurnRefresh == true
+        guard (activeTurnId == nil || allowsActiveTurnRefresh),
               let result = object["result"]?.objectValue,
               let thread = result["thread"]?.objectValue,
               let id = thread["id"]?.stringValue,
@@ -1295,6 +1339,11 @@ final class BridgeClient: ObservableObject {
         } ?? []
         transcriptCursor = result["transcriptCursor"]?.stringValue
         hasOlderTranscript = result["hasOlderTranscript"]?.boolValue ?? (transcriptCursor != nil)
+        if allowsActiveTurnRefresh && activeTurnId != nil && !entries.contains(where: \.isStreaming) {
+            activeTurnId = nil
+            activeTurnLastEventAt = nil
+        }
+        lastTranscriptSyncAt = Date()
         if transcriptStore.replaceIfChanged(with: entries) {
             publishTranscript()
             appendEvent("chat", "synced \(id)")
@@ -1352,6 +1401,7 @@ final class BridgeClient: ObservableObject {
            let turnId = turn["id"]?.stringValue {
             if eventThreadId == threadId {
                 activeTurnId = turnId
+                activeTurnLastEventAt = Date()
                 refreshPromptQueue()
             }
         }
@@ -1360,6 +1410,9 @@ final class BridgeClient: ObservableObject {
            let threadId = params["threadId"]?.stringValue,
            let turnId = params["turnId"]?.stringValue,
            let delta = params["delta"]?.stringValue {
+            if threadId == self.threadId && turnId == activeTurnId {
+                activeTurnLastEventAt = Date()
+            }
             transcriptStore.appendAssistantDelta(threadId, turnId: turnId, text: delta)
             publishTranscript()
             return
@@ -1373,6 +1426,7 @@ final class BridgeClient: ObservableObject {
                 publishTranscript()
                 if threadId == self.threadId {
                     activeTurnId = nil
+                    activeTurnLastEventAt = nil
                     refreshPromptQueue()
                     refreshActiveChatIfNeeded(force: true)
                 }
@@ -1452,6 +1506,8 @@ final class BridgeClient: ObservableObject {
         if threadId != id {
             threadId = id
             activeTurnId = nil
+            activeTurnLastEventAt = nil
+            lastTranscriptSyncAt = nil
             promptQueue.removeAll()
             transcriptStore.addSystemMessage("Thread started: \(shortThreadId(id))")
             publishTranscript()
@@ -1583,6 +1639,9 @@ final class BridgeClient: ObservableObject {
         approvals = []
         respondingApprovalIds = []
         activeTurnId = nil
+        activeTurnLastEventAt = nil
+        isRefreshingActiveChat = false
+        lastTranscriptSyncAt = nil
         selectedProjectPath = ""
         selectedModel = ""
         selectedReasoningEffort = ReasoningEffortOption.fallback
@@ -1647,6 +1706,9 @@ final class BridgeClient: ObservableObject {
         selectedSandbox = SandboxOption.workspaceWrite.rawValue
         threadId = demoThreadId
         activeTurnId = demoTurnId
+        activeTurnLastEventAt = Date()
+        isRefreshingActiveChat = false
+        lastTranscriptSyncAt = Date(timeIntervalSinceNow: -45)
         promptDraft = "Ask maludex to keep the iPhone transcript in sync..."
         projectRoots = [
             ProjectRootOption(path: "/Users/malulung/Documents", name: "Documents"),
@@ -1711,7 +1773,7 @@ final class BridgeClient: ObservableObject {
         ]
         approvals = []
         diagnostics = BridgeDiagnostics(json: [
-            "bridgeVersion": .string("0.7.4"),
+            "bridgeVersion": .string("0.7.5"),
             "protocolVersion": .number(1),
             "minClientProtocolVersion": .number(1),
             "host": .string("100.75.40.51"),
@@ -1801,7 +1863,7 @@ final class BridgeClient: ObservableObject {
                 )
             ]
             self.diagnostics = BridgeDiagnostics(json: [
-                "bridgeVersion": .string("0.7.4"),
+                "bridgeVersion": .string("0.7.5"),
                 "protocolVersion": .number(1),
                 "minClientProtocolVersion": .number(1),
                 "host": .string("100.75.40.51"),
@@ -1838,6 +1900,7 @@ final class BridgeClient: ObservableObject {
             guard !Task.isCancelled, self.isDemoMode else { return }
             self.approvals.removeAll()
             self.activeTurnId = nil
+            self.activeTurnLastEventAt = nil
             self.transcriptStore.finishAssistantTurn(self.threadId, turnId: "turn-demo-live")
             self.transcriptStore.addSystemMessage("Approved command: real Simulator capture completed.")
             self.transcriptStore.appendAssistantDelta(
@@ -1846,6 +1909,7 @@ final class BridgeClient: ObservableObject {
                 text: "The README media now comes from the installed app running in iOS Simulator, not from handcrafted PNG frames."
             )
             self.transcriptStore.finishAssistantTurn(self.threadId, turnId: "turn-demo-final")
+            self.lastTranscriptSyncAt = Date()
             self.publishTranscript()
             self.promptDraft = "Ask maludex to publish the real simulator demo..."
             self.events.insert(BridgeEvent(title: "turn/completed", detail: "simulator media ready"), at: 0)

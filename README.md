@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.7.4`
+Current version: `v0.7.5`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs from a polished mobile UI.
 
@@ -16,25 +16,25 @@ The Mac bridge launches `codex app-server` over stdio JSONL and exposes a narrow
 - Pair an iPhone to one or more Macs with a QR capability token.
 - Start, steer, stop, and queue Codex turns from iPhone.
 - Pick projects, create projects, choose models, tune reasoning intelligence, and change permission mode.
-- Stream transcripts with attachments, searchable history, collapsed long bubbles, tap-to-copy text, and approval cards.
+- Stream transcripts with attachments, searchable history, collapsed long bubbles, tap-to-copy text, approval cards, visible sync status, and manual transcript refresh.
 - Keep per-bridge drafts, quick prompts, local transcripts, and mobile handoff history across app restarts.
 - Use the macOS Control Center to repair stale bridge installs, rotate tokens, generate pairing QR codes, inspect diagnostics, and review iPhone-authored handoff prompts.
 
 ## Status
 
-`v0.7.4` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
+`v0.7.5` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
 
 ## Demo
 
 <p align="center">
-  <img src="media/maludex-simulator-cuts.gif" alt="maludex v0.7.4 animated iOS Simulator UI tour" width="420">
+  <img src="media/maludex-simulator-cuts.gif" alt="maludex v0.7.5 animated iOS Simulator UI tour" width="420">
 </p>
 
 The demo above is an animated cut reel built from the actual SwiftUI app running in Xcode's iOS Simulator with `scripts/create-demo-video.sh`. The script launches the installed app with local demo state, records the real maludex UI with `simctl`, and rebuilds the GIF from captured Simulator frames. [Watch the MP4 version](media/maludex-simulator-demo.mp4).
 
 ## Features
 
-- SwiftUI iPhone client with QR pairing, camera scanner, connection status, searchable project/model pickers, project favorites, editable saved quick prompts, prompt composer, streaming transcript, approval cards, attachment picker, voice input, and local transcript persistence.
+- SwiftUI iPhone client with QR pairing, camera scanner, connection status, searchable project/model pickers, project favorites, editable saved quick prompts, prompt composer, streaming transcript, last-synced transcript refresh, approval cards, attachment picker, voice input, and local transcript persistence.
 - SwiftUI macOS Control Center app for bridge health, recommended next steps, LaunchAgent repair, restart/start/stop, token rotation, pairing QR generation, and desktop review of iPhone-authored handoff prompts.
 - Multiple saved Mac bridges, each with its own Keychain token and per-bridge session state.
 - Node.js + TypeScript Mac bridge that translates between mobile WebSocket messages and Codex JSON-RPC over stdio JSONL.
@@ -76,13 +76,41 @@ The demo above is an animated cut reel built from the actual SwiftUI app running
 - Xcode with iOS support for building the SwiftUI client.
 - Tailscale on both the Mac and iPhone if you want to connect from outside your local Wi-Fi.
 
-## Install The Bridge
+## Recommended Install
+
+Use the macOS Control Center for day-to-day setup and repair. The terminal is
+only needed for the first clone/build or as a fallback when the app cannot run.
 
 ```bash
 git clone https://github.com/malulungsoft/maludex.git
 cd maludex
 ./scripts/setup-local.sh
+npm run install:control-center
 ```
+
+Then open **maludex Control Center** from `/Applications` or
+`~/Applications`, choose this repo folder, and use the buttons in the app:
+
+1. **Repair** installs or repairs the LaunchAgent and token file.
+2. **Start** launches the bridge in the background.
+3. **Pair** shows a QR code for the iPhone app.
+4. **Refresh** re-checks bridge health after changes.
+
+For physical iPhone testing away from local Wi-Fi, install Tailscale on both
+devices and run the Control Center's recommended repair/start flow after
+configuring the bridge to the Mac's Tailscale IP:
+
+```bash
+./scripts/configure-tailscale-bridge.sh
+```
+
+The pairing QR contains the bearer capability token, so treat it like a
+password.
+
+## Terminal Fallback
+
+Use these commands only if you intentionally want to run or repair the bridge
+without the Control Center.
 
 Run the bridge manually for local simulator testing:
 
@@ -96,7 +124,8 @@ Run it manually for a physical iPhone over Tailscale:
 npm run dev -- --host <your-mac-tailscale-ip> --port 8765
 ```
 
-The CLI prints a QR code unless `--no-qr` is passed. Scan that QR from the iPhone app. The QR contains the bearer capability token, so treat it like a password.
+The CLI prints a QR code unless `--no-qr` is passed. Scan that QR from the
+iPhone app.
 
 ## Install As A macOS LaunchAgent
 
@@ -118,13 +147,10 @@ That script detects the Mac's Tailscale IPv4 address, updates the LaunchAgent to
 
 ## macOS Control Center
 
-Open the standalone Mac app package in Xcode:
-
-```bash
-open macos/MaludexControlCenter/Package.swift
-```
-
-Run the `MaludexControlCenter` scheme. The app reads the redacted doctor JSON from the local repo and can refresh bridge status, show the recommended next step, repair a stale LaunchAgent path, restart/start/stop the bridge, rotate the pairing token, and display a new pairing QR.
+The Control Center is the recommended way to manage maludex on macOS. It reads
+redacted doctor JSON from the local repo and can refresh bridge status, show
+the recommended next step, repair a stale LaunchAgent path, restart/start/stop
+the bridge, rotate the pairing token, and display a new pairing QR.
 
 The app never displays the raw bearer token. Pairing QR images are still secrets because they encode the token.
 
@@ -141,6 +167,14 @@ otherwise:
 ```bash
 npm run install:control-center
 ```
+
+To develop the app in Xcode:
+
+```bash
+open macos/MaludexControlCenter/Package.swift
+```
+
+Run the `MaludexControlCenter` scheme.
 
 When launched from Finder or Xcode, macOS apps do not inherit the same shell
 `PATH` as Terminal. The Control Center looks for `node` and `npm` in Homebrew,

@@ -329,6 +329,13 @@ private struct ProjectScreen: View {
                     showDiagnostics: { diagnosticsPresented = true }
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
+
+                if !bridge.threadId.isEmpty {
+                    TranscriptSyncBar()
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 6)
+                        .transition(.opacity)
+                }
             }
 
             ScrollViewReader { proxy in
@@ -750,6 +757,66 @@ private struct ProjectHeaderIconButton: View {
         .buttonStyle(.plain)
         .contentShape(Circle())
         .accessibilityLabel(title)
+    }
+}
+
+private struct TranscriptSyncBar: View {
+    @EnvironmentObject private var bridge: BridgeClient
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 15)) { timeline in
+            HStack(spacing: 8) {
+                Image(systemName: bridge.isRefreshingActiveChat ? "arrow.triangle.2.circlepath" : "checkmark.circle")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(bridge.isRefreshingActiveChat ? AppPalette.warning : AppPalette.success)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(bridge.copy.transcriptSyncTitle)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    Text(
+                        transcriptSyncStatusTitle(
+                            lastSyncedAt: bridge.lastTranscriptSyncAt,
+                            isRefreshing: bridge.isRefreshingActiveChat,
+                            now: timeline.date,
+                            language: bridge.selectedLanguage
+                        )
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppPalette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                }
+
+                Spacer(minLength: 4)
+
+                Button {
+                    bridge.refreshActiveChatNow()
+                } label: {
+                    Group {
+                        if bridge.isRefreshingActiveChat {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.caption.weight(.bold))
+                        }
+                    }
+                    .frame(width: 28, height: 28)
+                    .background(AppPalette.userBubble, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!bridge.canRefreshActiveChat)
+                .accessibilityLabel(bridge.copy.syncNowTitle)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(AppPalette.panel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(AppPalette.line, lineWidth: 1)
+            )
+        }
     }
 }
 

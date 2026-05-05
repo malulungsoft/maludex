@@ -124,6 +124,33 @@ struct ClientModelsTests {
         require(messageRelativeTime(from: Date(timeIntervalSince1970: 880), now: now) == "2분 전", "message time should show minutes")
         require(messageRelativeTime(from: Date(timeIntervalSince1970: 1_000 - 7_200), now: now) == "2시간 전", "message time should show hours")
         require(messageRelativeTime(from: Date(timeIntervalSince1970: 1_000 - 172_800), now: now) == "2일 전", "message time should show days")
+        require(
+            transcriptSyncStatusTitle(
+                lastSyncedAt: Date(timeIntervalSince1970: 988),
+                isRefreshing: false,
+                now: now,
+                language: .english
+            ) == "Last synced 12s ago",
+            "English sync status should show the last synced age"
+        )
+        require(
+            transcriptSyncStatusTitle(
+                lastSyncedAt: Date(timeIntervalSince1970: 880),
+                isRefreshing: false,
+                now: now,
+                language: .korean
+            ) == "2분 전 동기화됨",
+            "Korean sync status should show the last synced age"
+        )
+        require(
+            transcriptSyncStatusTitle(
+                lastSyncedAt: nil,
+                isRefreshing: true,
+                now: now,
+                language: .english
+            ) == "Syncing...",
+            "sync status should expose refresh progress"
+        )
 
         let searchableEntries = [
             TranscriptEntry(role: .user, text: "Please inspect the release checklist."),
@@ -264,6 +291,36 @@ struct ClientModelsTests {
                 minimumInterval: 12
             ),
             "active mobile turns should keep live streaming events in control"
+        )
+        require(
+            shouldRefreshActiveChat(
+                isConnected: true,
+                threadId: "thread-1",
+                isLoadingOlderTranscript: false,
+                hasActiveTurn: true,
+                now: Date(timeIntervalSince1970: 170),
+                lastRefreshAt: Date(timeIntervalSince1970: 100),
+                minimumInterval: 12,
+                activeTurnLastEventAt: Date(timeIntervalSince1970: 120),
+                activeTurnRecoveryInterval: 45
+            ),
+            "stale active turns should recover by refreshing the desktop chat"
+        )
+        require(
+            shouldRefreshActiveChat(
+                isConnected: true,
+                threadId: "thread-1",
+                isLoadingOlderTranscript: false,
+                hasActiveTurn: true,
+                now: Date(timeIntervalSince1970: 121),
+                lastRefreshAt: Date(timeIntervalSince1970: 120),
+                minimumInterval: 12,
+                activeTurnLastEventAt: Date(timeIntervalSince1970: 121),
+                activeTurnRecoveryInterval: 45,
+                bypassMinimumInterval: true,
+                allowActiveTurnRefresh: true
+            ),
+            "manual refresh should bypass the active-turn and interval guards"
         )
         require(
             !shouldRefreshActiveChat(
