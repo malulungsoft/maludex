@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.4 - 2026-05-05
+
+- Replace the README hero media with a fast animated cut reel GIF built from real iOS Simulator capture frames.
+- Remove the redundant six-image screenshot grid from the GitHub landing page.
+- Stop publishing standalone README screenshot assets from the demo generation script.
+
 ## 0.7.3 - 2026-05-05
 
 - Replace the README demo media pipeline with a real Xcode iOS Simulator recording of the installed SwiftUI app.

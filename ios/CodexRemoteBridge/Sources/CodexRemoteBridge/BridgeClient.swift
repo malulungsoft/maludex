@@ -1711,7 +1711,7 @@ final class BridgeClient: ObservableObject {
         ]
         approvals = []
         diagnostics = BridgeDiagnostics(json: [
-            "bridgeVersion": .string("0.7.3"),
+            "bridgeVersion": .string("0.7.4"),
             "protocolVersion": .number(1),
             "minClientProtocolVersion": .number(1),
             "host": .string("100.75.40.51"),
@@ -1801,7 +1801,7 @@ final class BridgeClient: ObservableObject {
                 )
             ]
             self.diagnostics = BridgeDiagnostics(json: [
-                "bridgeVersion": .string("0.7.3"),
+                "bridgeVersion": .string("0.7.4"),
                 "protocolVersion": .number(1),
                 "minClientProtocolVersion": .number(1),
                 "host": .string("100.75.40.51"),
