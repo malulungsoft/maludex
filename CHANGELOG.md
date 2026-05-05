@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.4 - 2026-05-05
+
+- Add a Codex-style slash command palette to the iPhone prompt composer and expanded composer.
+- Suggest localized skill, plugin, mode, model, queue, and subagent commands when the active line starts with `/`.
+- Insert the selected command as an editable prompt instruction without changing bridge security defaults or logging prompt bodies.
+
 ## 0.9.3 - 2026-05-05
 
 - Register mobile-started threads in Codex Desktop's local `session_index.jsonl` so iPhone-created chat rooms can appear after restarting the desktop app.

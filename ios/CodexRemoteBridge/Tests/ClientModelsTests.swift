@@ -28,6 +28,7 @@ struct ClientModelsTests {
         require(AppCopy(language: .korean).bridgeDefaultModelDetail == "브릿지 기본 모델", "Korean default model detail should be available")
         require(AppCopy(language: .english).quickPromptsTitle == "Quick prompts", "quick prompt copy should be available")
         require(AppCopy(language: .korean).quickPromptsTitle == "빠른 프롬프트", "Korean quick prompt copy should be available")
+        require(AppCopy(language: .english).slashCommandsTitle == "Commands", "slash command copy should be available")
         require(AppCopy(language: .english).manageQuickPromptsTitle == "Manage quick prompts", "quick prompt management copy should be available")
         require(AppCopy(language: .korean).saveQuickPromptTitle == "프롬프트 저장", "Korean quick prompt save copy should be available")
         require(AppCopy(language: .english).renameBridgeTitle == "Rename bridge", "bridge rename copy should be available")
@@ -85,6 +86,19 @@ struct ClientModelsTests {
         require(koreanTemplates.first?.prompt.contains("현재 변경사항") == true, "Korean quick prompt text should be localized")
         let customTemplate = PromptTemplate(id: "custom-ship", title: "Ship", prompt: "Prepare a release-ready summary.", systemImage: "paperplane")
         require(PromptTemplate.mergedBuiltIns(language: .english, custom: [customTemplate]).last == customTemplate, "custom quick prompts should appear after built-ins")
+        let defaultSlashCommands = slashCommandSuggestions(for: "/", language: .english, modelNames: ["GPT-5.5"])
+        require(defaultSlashCommands.contains { $0.id == "skill-imagegen" }, "slash commands should include skills")
+        require(defaultSlashCommands.contains { $0.id == "plugin-github" }, "slash commands should include plugins")
+        require(defaultSlashCommands.contains { $0.id == "mode-review" }, "slash commands should include modes")
+        require(defaultSlashCommands.contains { $0.id == "model-gpt-5.5" }, "slash commands should include available models")
+        require(slashCommandSuggestions(for: "/git", language: .english).first?.id == "plugin-github", "slash query should filter by command text")
+        require(slashCommandSuggestions(for: "hello /git", language: .english).isEmpty, "slash commands should only trigger at the start of the active line")
+        require(slashCommandSuggestions(for: "note\n/리뷰", language: .korean).contains { $0.id == "mode-review" }, "Korean slash query should filter localized commands")
+        let githubCommand = SlashCommand.builtIns(language: .english).first { $0.id == "plugin-github" }
+        require(githubCommand != nil, "GitHub slash command should be available")
+        let appliedGithubCommand = githubCommand.map { applySlashCommand($0, to: "/git") } ?? ""
+        require(appliedGithubCommand.contains("GitHub"), "applying a slash command should insert its prompt instruction")
+        require(!appliedGithubCommand.contains("/git"), "applying a slash command should replace the active slash token")
 
         let chat = ChatThreadOption(json: [
             "id": .string("thread-1"),

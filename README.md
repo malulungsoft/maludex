@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.9.3`
+Current version: `v0.9.4`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs from a polished mobile UI.
 
@@ -21,22 +21,23 @@ The Mac bridge launches `codex app-server` over stdio JSONL and exposes a narrow
 - See safe iPhone request delivery/persistence status in the chat without exposing prompt bodies in bridge logs.
 - Have mobile-created or mobile-selected projects and chat rooms appear in the Codex Desktop workspace and session lists.
 - Use the macOS Control Center to update version-drifted installs, repair stale bridge installs, rotate tokens, generate pairing QR codes, inspect diagnostics, review iPhone-authored handoff prompts, and see recent action logs.
+- Type `/` in the iPhone prompt composer to insert skill, plugin, mode, model, queue, and subagent command prompts.
 
 ## Status
 
-`v0.9.3` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
+`v0.9.4` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
 
 ## Demo
 
 <p align="center">
-  <img src="media/maludex-simulator-demo.gif" alt="maludex v0.9.3 animated iOS Simulator UI tour" width="420">
+  <img src="media/maludex-simulator-demo.gif" alt="maludex v0.9.4 animated iOS Simulator UI tour" width="420">
 </p>
 
 The demo above is a continuous animated GIF built from the actual SwiftUI app running in Xcode's iOS Simulator with `scripts/create-demo-video.sh`. The script launches the installed app with local demo state, records the real maludex UI with `simctl`, and rebuilds the GIF from the captured Simulator video. [Watch the MP4 version](media/maludex-simulator-demo.mp4).
 
 ## Features
 
-- SwiftUI iPhone client with QR pairing, first-run onboarding, setup checklist, camera scanner, connection status, searchable project/model pickers, project favorites, editable saved quick prompts, prompt composer, streaming transcript, replay-gap recovery status, approval cards, attachment picker, tap-to-expand image previews, one-tap code block copying, voice input, and local transcript persistence.
+- SwiftUI iPhone client with QR pairing, first-run onboarding, setup checklist, camera scanner, connection status, searchable project/model pickers, project favorites, editable saved quick prompts, slash command palette, prompt composer, streaming transcript, replay-gap recovery status, approval cards, attachment picker, tap-to-expand image previews, one-tap code block copying, voice input, and local transcript persistence.
 - SwiftUI macOS Control Center app for bridge health, recommended next steps, one-click update, LaunchAgent repair, restart/start/stop, token rotation, pairing QR generation, action history, and desktop review of iPhone-authored handoff prompts.
 - Multiple saved Mac bridges, each with its own Keychain token and per-bridge session state.
 - Node.js + TypeScript Mac bridge that translates between mobile WebSocket messages and Codex JSON-RPC over stdio JSONL.

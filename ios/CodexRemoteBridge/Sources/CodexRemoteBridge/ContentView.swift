@@ -2713,6 +2713,15 @@ private struct PromptComposer: View {
                     .stroke(promptFocused.wrappedValue ? AppPalette.accent.opacity(0.45) : AppPalette.line, lineWidth: 1)
             )
 
+            if shouldShowSlashCommands {
+                SlashCommandPalette(commands: Array(slashCommands.prefix(8))) { command in
+                    withAnimation(.snappy(duration: 0.18)) {
+                        prompt = applySlashCommand(command, to: prompt)
+                    }
+                    promptFocused.wrappedValue = true
+                }
+            }
+
             AttachmentStrip(attachments: $attachments)
 
             HStack(spacing: 8) {
@@ -2802,6 +2811,18 @@ private struct PromptComposer: View {
     private var shouldShowQuickPrompts: Bool {
         prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty && !voiceState.isListening
     }
+
+    private var slashCommands: [SlashCommand] {
+        slashCommandSuggestions(
+            for: prompt,
+            language: bridge.selectedLanguage,
+            modelNames: bridge.models.map(\.displayName)
+        )
+    }
+
+    private var shouldShowSlashCommands: Bool {
+        promptFocused.wrappedValue && !slashCommands.isEmpty
+    }
 }
 
 private struct ExpandedComposerSheet: View {
@@ -2811,12 +2832,23 @@ private struct ExpandedComposerSheet: View {
 
     var body: some View {
         NavigationStack {
-            TextEditor(text: $prompt)
-                .font(.body)
-                .textSelection(.enabled)
-                .scrollContentBackground(.hidden)
-                .padding(14)
-                .background(AppPalette.background)
+            VStack(spacing: 10) {
+                TextEditor(text: $prompt)
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .scrollContentBackground(.hidden)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if !slashCommands.isEmpty {
+                    SlashCommandPalette(commands: Array(slashCommands.prefix(10))) { command in
+                        prompt = applySlashCommand(command, to: prompt)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 14)
+                }
+            }
+            .background(AppPalette.background)
                 .navigationTitle(bridge.copy.composerTitle)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
@@ -2826,6 +2858,106 @@ private struct ExpandedComposerSheet: View {
                     }
                 }
         }
+    }
+
+    private var slashCommands: [SlashCommand] {
+        slashCommandSuggestions(
+            for: prompt,
+            language: bridge.selectedLanguage,
+            modelNames: bridge.models.map(\.displayName)
+        )
+    }
+}
+
+private struct SlashCommandPalette: View {
+    @EnvironmentObject private var bridge: BridgeClient
+    let commands: [SlashCommand]
+    let select: (SlashCommand) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label(bridge.copy.slashCommandsTitle, systemImage: "command")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Text("\(commands.count)")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(AppPalette.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AppPalette.userBubble, in: Capsule())
+            }
+
+            ScrollView {
+                LazyVStack(spacing: 6) {
+                    ForEach(commands) { command in
+                        Button {
+                            select(command)
+                        } label: {
+                            SlashCommandRow(command: command)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(command.title)
+                    }
+                }
+            }
+            .frame(maxHeight: 220)
+        }
+        .padding(10)
+        .background(AppPalette.panel, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(AppPalette.accent.opacity(0.18), lineWidth: 1)
+        )
+    }
+}
+
+private struct SlashCommandRow: View {
+    @EnvironmentObject private var bridge: BridgeClient
+    let command: SlashCommand
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: command.systemImage)
+                .font(.callout.weight(.bold))
+                .foregroundStyle(AppPalette.accent)
+                .frame(width: 30, height: 30)
+                .background(AppPalette.userBubble, in: RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(command.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppPalette.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+
+                    Text(command.category.title(language: bridge.selectedLanguage))
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(AppPalette.accent)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(AppPalette.userBubble, in: Capsule())
+                }
+
+                Text(command.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Image(systemName: "return")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(8)
+        .background(AppPalette.input, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(AppPalette.line, lineWidth: 1)
+        )
     }
 }
 

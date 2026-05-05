@@ -337,6 +337,449 @@ struct PromptTemplate: Identifiable, Equatable, Codable {
     }
 }
 
+enum SlashCommandCategory: String, CaseIterable, Codable {
+    case skill
+    case plugin
+    case mode
+    case model
+    case action
+
+    func title(language: AppLanguage) -> String {
+        switch (self, language) {
+        case (.skill, .english):
+            return "Skill"
+        case (.skill, .korean):
+            return "스킬"
+        case (.plugin, .english):
+            return "Plugin"
+        case (.plugin, .korean):
+            return "플러그인"
+        case (.mode, .english):
+            return "Mode"
+        case (.mode, .korean):
+            return "모드"
+        case (.model, .english):
+            return "Model"
+        case (.model, .korean):
+            return "모델"
+        case (.action, .english):
+            return "Action"
+        case (.action, .korean):
+            return "작업"
+        }
+    }
+}
+
+struct SlashCommand: Identifiable, Equatable, Codable {
+    let id: String
+    let title: String
+    let detail: String
+    let insertion: String
+    let systemImage: String
+    let category: SlashCommandCategory
+    let aliases: [String]
+
+    init(
+        id: String,
+        title: String,
+        detail: String,
+        insertion: String,
+        systemImage: String,
+        category: SlashCommandCategory,
+        aliases: [String] = []
+    ) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.insertion = insertion
+        self.systemImage = systemImage
+        self.category = category
+        self.aliases = aliases
+    }
+
+    static func builtIns(language: AppLanguage) -> [SlashCommand] {
+        switch language {
+        case .english:
+            return [
+                SlashCommand(
+                    id: "skill-imagegen",
+                    title: "/skill imagegen",
+                    detail: "Generate or edit images when the task needs visual assets.",
+                    insertion: "Use the imagegen skill for this task: ",
+                    systemImage: "photo.artframe",
+                    category: .skill,
+                    aliases: ["image", "asset", "visual", "이미지"]
+                ),
+                SlashCommand(
+                    id: "skill-browser",
+                    title: "/skill browser",
+                    detail: "Use browser automation for local UI checks or web workflows.",
+                    insertion: "Use browser automation for this task: ",
+                    systemImage: "safari",
+                    category: .skill,
+                    aliases: ["web", "localhost", "browser-use", "브라우저"]
+                ),
+                SlashCommand(
+                    id: "skill-docs",
+                    title: "/skill docs",
+                    detail: "Use current official docs before changing OpenAI-related behavior.",
+                    insertion: "Use the OpenAI docs skill and rely on official documentation for this task: ",
+                    systemImage: "doc.text.magnifyingglass",
+                    category: .skill,
+                    aliases: ["openai", "documentation", "문서"]
+                ),
+                SlashCommand(
+                    id: "skill-review",
+                    title: "/skill review",
+                    detail: "Review code for bugs, regressions, and missing tests.",
+                    insertion: "Review the current changes for bugs, regressions, and missing tests. Start with the highest-risk findings.",
+                    systemImage: "checkmark.shield",
+                    category: .skill,
+                    aliases: ["code review", "리뷰"]
+                ),
+                SlashCommand(
+                    id: "skill-refactor",
+                    title: "/skill refactor",
+                    detail: "Improve maintainability without changing behavior.",
+                    insertion: "Refactor this code conservatively without changing behavior, then verify the result: ",
+                    systemImage: "arrow.triangle.branch",
+                    category: .skill,
+                    aliases: ["cleanup", "정리", "리팩터"]
+                ),
+                SlashCommand(
+                    id: "plugin-github",
+                    title: "/plugin github",
+                    detail: "Inspect issues, releases, pull requests, or publish changes.",
+                    insertion: "Use the GitHub plugin for this task: ",
+                    systemImage: "chevron.left.forwardslash.chevron.right",
+                    category: .plugin,
+                    aliases: ["git", "pr", "release", "깃허브"]
+                ),
+                SlashCommand(
+                    id: "plugin-slack",
+                    title: "/plugin slack",
+                    detail: "Search Slack context or draft a workspace message.",
+                    insertion: "Use the Slack plugin for this task: ",
+                    systemImage: "bubble.left.and.bubble.right",
+                    category: .plugin,
+                    aliases: ["message", "workspace", "슬랙"]
+                ),
+                SlashCommand(
+                    id: "plugin-drive",
+                    title: "/plugin google-drive",
+                    detail: "Work with Google Drive, Docs, Sheets, or Slides.",
+                    insertion: "Use the Google Drive plugin for this task: ",
+                    systemImage: "folder.badge.gearshape",
+                    category: .plugin,
+                    aliases: ["docs", "sheets", "slides", "drive", "구글"]
+                ),
+                SlashCommand(
+                    id: "mode-plan",
+                    title: "/mode plan",
+                    detail: "Think through the implementation plan before editing.",
+                    insertion: "Plan this implementation first, then proceed once the approach is clear: ",
+                    systemImage: "list.bullet.rectangle",
+                    category: .mode,
+                    aliases: ["planning", "설계"]
+                ),
+                SlashCommand(
+                    id: "mode-review",
+                    title: "/mode review",
+                    detail: "Use a code-review stance and lead with findings.",
+                    insertion: "Switch to review mode: review the current changes for bugs, regressions, and missing tests.",
+                    systemImage: "text.badge.checkmark",
+                    category: .mode,
+                    aliases: ["검토", "리뷰"]
+                ),
+                SlashCommand(
+                    id: "mode-readonly",
+                    title: "/mode read-only",
+                    detail: "Inspect and explain without editing files.",
+                    insertion: "Read-only mode for this request: inspect the code and explain what you find without editing files.",
+                    systemImage: "lock",
+                    category: .mode,
+                    aliases: ["read only", "explain", "읽기"]
+                ),
+                SlashCommand(
+                    id: "mode-compact",
+                    title: "/mode compact",
+                    detail: "Ask Codex to summarize or compress context before continuing.",
+                    insertion: "Compact the current context and summarize the important state before continuing: ",
+                    systemImage: "rectangle.compress.vertical",
+                    category: .mode,
+                    aliases: ["summary", "compress", "context", "압축"]
+                ),
+                SlashCommand(
+                    id: "action-subagent-worker",
+                    title: "/subagent worker",
+                    detail: "Delegate a bounded implementation task to a worker subagent.",
+                    insertion: "Use a worker subagent for a bounded, independent implementation task: ",
+                    systemImage: "person.2.wave.2",
+                    category: .action,
+                    aliases: ["agent", "worker", "subagent", "서브에이전트"]
+                ),
+                SlashCommand(
+                    id: "action-queue",
+                    title: "/queue",
+                    detail: "Add the request to the prompt queue when a turn is already running.",
+                    insertion: "Queue this request after the active turn finishes: ",
+                    systemImage: "text.line.first.and.arrowtriangle.forward",
+                    category: .action,
+                    aliases: ["later", "enqueue", "대기열"]
+                )
+            ]
+        case .korean:
+            return [
+                SlashCommand(
+                    id: "skill-imagegen",
+                    title: "/스킬 imagegen",
+                    detail: "이미지 생성이나 편집이 필요한 작업에 사용합니다.",
+                    insertion: "imagegen 스킬을 사용해서 이 작업을 진행해줘: ",
+                    systemImage: "photo.artframe",
+                    category: .skill,
+                    aliases: ["image", "asset", "visual", "이미지"]
+                ),
+                SlashCommand(
+                    id: "skill-browser",
+                    title: "/스킬 browser",
+                    detail: "로컬 UI 확인이나 웹 작업에 브라우저 자동화를 사용합니다.",
+                    insertion: "브라우저 자동화를 사용해서 이 작업을 진행해줘: ",
+                    systemImage: "safari",
+                    category: .skill,
+                    aliases: ["web", "localhost", "browser-use", "브라우저"]
+                ),
+                SlashCommand(
+                    id: "skill-docs",
+                    title: "/스킬 docs",
+                    detail: "OpenAI 관련 변경 전에 최신 공식 문서를 확인합니다.",
+                    insertion: "OpenAI docs 스킬을 사용하고 공식 문서를 기준으로 이 작업을 진행해줘: ",
+                    systemImage: "doc.text.magnifyingglass",
+                    category: .skill,
+                    aliases: ["openai", "documentation", "문서"]
+                ),
+                SlashCommand(
+                    id: "skill-review",
+                    title: "/스킬 review",
+                    detail: "버그, 회귀, 누락된 테스트 중심으로 코드를 리뷰합니다.",
+                    insertion: "현재 변경사항을 버그, 회귀, 누락된 테스트 중심으로 리뷰해줘. 위험도가 높은 항목부터 알려줘.",
+                    systemImage: "checkmark.shield",
+                    category: .skill,
+                    aliases: ["code review", "검토", "리뷰"]
+                ),
+                SlashCommand(
+                    id: "skill-refactor",
+                    title: "/스킬 refactor",
+                    detail: "동작은 유지하면서 유지보수성을 개선합니다.",
+                    insertion: "동작을 바꾸지 않는 범위에서 보수적으로 리팩터링하고 검증까지 진행해줘: ",
+                    systemImage: "arrow.triangle.branch",
+                    category: .skill,
+                    aliases: ["cleanup", "정리", "리팩터"]
+                ),
+                SlashCommand(
+                    id: "plugin-github",
+                    title: "/플러그인 github",
+                    detail: "이슈, 릴리즈, PR 확인 또는 변경사항 배포에 사용합니다.",
+                    insertion: "GitHub 플러그인을 사용해서 이 작업을 진행해줘: ",
+                    systemImage: "chevron.left.forwardslash.chevron.right",
+                    category: .plugin,
+                    aliases: ["git", "pr", "release", "깃허브"]
+                ),
+                SlashCommand(
+                    id: "plugin-slack",
+                    title: "/플러그인 slack",
+                    detail: "Slack 문맥 검색이나 메시지 초안 작성에 사용합니다.",
+                    insertion: "Slack 플러그인을 사용해서 이 작업을 진행해줘: ",
+                    systemImage: "bubble.left.and.bubble.right",
+                    category: .plugin,
+                    aliases: ["message", "workspace", "슬랙"]
+                ),
+                SlashCommand(
+                    id: "plugin-drive",
+                    title: "/플러그인 google-drive",
+                    detail: "Google Drive, Docs, Sheets, Slides 작업에 사용합니다.",
+                    insertion: "Google Drive 플러그인을 사용해서 이 작업을 진행해줘: ",
+                    systemImage: "folder.badge.gearshape",
+                    category: .plugin,
+                    aliases: ["docs", "sheets", "slides", "drive", "구글"]
+                ),
+                SlashCommand(
+                    id: "mode-plan",
+                    title: "/모드 plan",
+                    detail: "파일을 수정하기 전에 구현 계획을 먼저 잡습니다.",
+                    insertion: "먼저 구현 계획을 세우고 접근이 명확해지면 진행해줘: ",
+                    systemImage: "list.bullet.rectangle",
+                    category: .mode,
+                    aliases: ["planning", "설계", "계획"]
+                ),
+                SlashCommand(
+                    id: "mode-review",
+                    title: "/모드 review",
+                    detail: "코드 리뷰 관점으로 문제점을 먼저 제시합니다.",
+                    insertion: "리뷰 모드로 진행해줘. 현재 변경사항을 버그, 회귀, 누락된 테스트 중심으로 검토해줘.",
+                    systemImage: "text.badge.checkmark",
+                    category: .mode,
+                    aliases: ["검토", "리뷰"]
+                ),
+                SlashCommand(
+                    id: "mode-readonly",
+                    title: "/모드 read-only",
+                    detail: "파일을 수정하지 않고 조사와 설명만 진행합니다.",
+                    insertion: "이번 요청은 읽기 전용 모드로 진행해줘. 파일을 수정하지 말고 조사한 내용을 설명해줘.",
+                    systemImage: "lock",
+                    category: .mode,
+                    aliases: ["read only", "explain", "읽기"]
+                ),
+                SlashCommand(
+                    id: "mode-compact",
+                    title: "/모드 compact",
+                    detail: "계속하기 전에 중요한 문맥을 압축 요약합니다.",
+                    insertion: "계속하기 전에 현재 문맥을 압축하고 중요한 상태를 요약해줘: ",
+                    systemImage: "rectangle.compress.vertical",
+                    category: .mode,
+                    aliases: ["summary", "compress", "context", "압축"]
+                ),
+                SlashCommand(
+                    id: "action-subagent-worker",
+                    title: "/서브에이전트 worker",
+                    detail: "독립적인 구현 작업을 worker 서브에이전트에 위임합니다.",
+                    insertion: "독립적으로 처리할 수 있는 제한된 구현 작업에 worker 서브에이전트를 사용해줘: ",
+                    systemImage: "person.2.wave.2",
+                    category: .action,
+                    aliases: ["agent", "worker", "subagent", "서브에이전트"]
+                ),
+                SlashCommand(
+                    id: "action-queue",
+                    title: "/대기열",
+                    detail: "현재 작업이 끝난 뒤 이어서 실행되도록 대기열에 넣습니다.",
+                    insertion: "현재 작업이 끝난 뒤 이 요청을 대기열에서 이어서 처리해줘: ",
+                    systemImage: "text.line.first.and.arrowtriangle.forward",
+                    category: .action,
+                    aliases: ["later", "enqueue", "queue", "대기열"]
+                )
+            ]
+        }
+    }
+
+    static func modelCommands(modelNames: [String], language: AppLanguage) -> [SlashCommand] {
+        uniqueModelNames(modelNames).map { modelName in
+            let slug = slashCommandSlug(modelName)
+            let detail: String
+            let insertion: String
+            switch language {
+            case .english:
+                detail = "Ask Codex to use \(modelName) for the next task."
+                insertion = "Use model \(modelName) for this task: "
+            case .korean:
+                detail = "다음 작업에 \(modelName) 모델을 사용하도록 요청합니다."
+                insertion = "이 작업은 \(modelName) 모델을 사용해서 진행해줘: "
+            }
+            return SlashCommand(
+                id: "model-\(slug)",
+                title: "/model \(modelName)",
+                detail: detail,
+                insertion: insertion,
+                systemImage: "cpu",
+                category: .model,
+                aliases: ["model", "모델", modelName]
+            )
+        }
+    }
+
+    func matches(query: String) -> Bool {
+        let normalizedQuery = slashCommandNormalized(query)
+        guard !normalizedQuery.isEmpty else {
+            return true
+        }
+        let haystack = slashCommandNormalized(([id, title, detail, insertion, category.rawValue] + aliases).joined(separator: " "))
+        return normalizedQuery.split(separator: " ").allSatisfy { haystack.contains($0) }
+    }
+}
+
+struct SlashCommandQuery: Equatable {
+    let range: Range<String.Index>
+    let query: String
+}
+
+func slashCommandQuery(in prompt: String) -> SlashCommandQuery? {
+    guard !prompt.isEmpty else {
+        return nil
+    }
+    let lineStart = prompt.lastIndex(of: "\n").map { prompt.index(after: $0) } ?? prompt.startIndex
+    let activeLine = prompt[lineStart..<prompt.endIndex]
+    guard let commandStart = activeLine.firstIndex(where: { !$0.isWhitespace }) else {
+        return nil
+    }
+    guard activeLine[commandStart] == "/" else {
+        return nil
+    }
+    let queryStart = prompt.index(after: commandStart)
+    let query = String(prompt[queryStart..<prompt.endIndex])
+    return SlashCommandQuery(range: commandStart..<prompt.endIndex, query: query)
+}
+
+func slashCommandSuggestions(for prompt: String, language: AppLanguage, modelNames: [String] = []) -> [SlashCommand] {
+    guard let slashQuery = slashCommandQuery(in: prompt) else {
+        return []
+    }
+    let commands = SlashCommand.builtIns(language: language) + SlashCommand.modelCommands(modelNames: modelNames, language: language)
+    let filtered = commands.filter { $0.matches(query: slashQuery.query) }
+    return Array(filtered.prefix(20))
+}
+
+func applySlashCommand(_ command: SlashCommand, to prompt: String) -> String {
+    guard let slashQuery = slashCommandQuery(in: prompt) else {
+        return prompt
+    }
+    var updated = prompt
+    updated.replaceSubrange(slashQuery.range, with: command.insertion)
+    return updated
+}
+
+private func slashCommandNormalized(_ value: String) -> String {
+    value.lowercased()
+        .replacingOccurrences(of: "/", with: " ")
+        .replacingOccurrences(of: "-", with: " ")
+        .replacingOccurrences(of: "_", with: " ")
+        .replacingOccurrences(of: ".", with: " ")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+private func slashCommandSlug(_ value: String) -> String {
+    let lowercased = value.lowercased()
+    var scalars: [UnicodeScalar] = []
+    var previousWasSeparator = false
+    for scalar in lowercased.unicodeScalars {
+        let isAllowed = CharacterSet.alphanumerics.contains(scalar) || scalar == "."
+        if isAllowed {
+            scalars.append(scalar)
+            previousWasSeparator = false
+        } else if !previousWasSeparator {
+            scalars.append("-")
+            previousWasSeparator = true
+        }
+    }
+    let slug = String(String.UnicodeScalarView(scalars)).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    return slug.isEmpty ? "custom" : slug
+}
+
+private func uniqueModelNames(_ modelNames: [String]) -> [String] {
+    var seen = Set<String>()
+    var result: [String] = []
+    for modelName in modelNames {
+        let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            continue
+        }
+        let key = trimmed.lowercased()
+        guard !seen.contains(key) else {
+            continue
+        }
+        seen.insert(key)
+        result.append(trimmed)
+    }
+    return result
+}
+
 struct AppCopy: Equatable {
     let language: AppLanguage
 
@@ -473,6 +916,7 @@ struct AppCopy: Equatable {
     var removeAttachmentTitle: String { text("Remove attachment", "첨부 제거") }
     var quickPromptsTitle: String { text("Quick prompts", "빠른 프롬프트") }
     var manageQuickPromptsTitle: String { text("Manage quick prompts", "빠른 프롬프트 관리") }
+    var slashCommandsTitle: String { text("Commands", "명령어") }
     var savedQuickPromptsTitle: String { text("Saved prompts", "저장한 프롬프트") }
     var newQuickPromptTitle: String { text("New quick prompt", "새 빠른 프롬프트") }
     var editQuickPromptTitle: String { text("Edit prompt", "프롬프트 편집") }
@@ -645,7 +1089,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.9.3"
+let maludexClientVersion = "0.9.4"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)
