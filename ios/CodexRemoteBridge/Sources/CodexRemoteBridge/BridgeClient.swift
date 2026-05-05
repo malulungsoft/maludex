@@ -1057,6 +1057,12 @@ final class BridgeClient: ObservableObject {
                 handleApproval(object)
             case "approval.responded", "approval.resolved":
                 handleApprovalResolved(object)
+            case "thread.activity":
+                handleThreadActivity(object)
+            case "sync.replay_gap":
+                handleReplayGap(object)
+            case "mobile.turn.received", "mobile.turn.persisted", "mobile.turn.persist_failed":
+                handleMobileTurnStatus(object)
             case "prompt.queue.updated":
                 handlePromptQueueUpdated(object)
             case "prompt.queue.started":
@@ -1490,7 +1496,92 @@ final class BridgeClient: ObservableObject {
         clearPendingApprovalResponses(for: approvalId)
         let decision = object["decision"]?.stringValue ?? "resolved"
         let reason = object["reason"]?.stringValue
+        transcriptStore.addSystemMessage(
+            approvalResolutionSystemMessage(decision: decision, reason: reason, language: selectedLanguage)
+        )
+        publishTranscript()
+        if reason == "confirmed" {
+            _ = refreshActiveChatIfNeeded(
+                force: true,
+                allowActiveTurnRefresh: true,
+                bypassMinimumInterval: true
+            )
+        }
         appendEvent("approval", reason == nil ? decision : "\(decision) · \(reason!)")
+    }
+
+    private func handleThreadActivity(_ object: [String: JSONValue]) {
+        updateLastEventId(from: object)
+        let eventThreadId = object["threadId"]?.stringValue
+        let method = object["method"]?.stringValue ?? "thread.activity"
+        let requiresRefresh = object["requiresRefresh"]?.boolValue ?? false
+        appendEvent("thread.activity", method)
+
+        guard let eventThreadId else {
+            return
+        }
+
+        if eventThreadId == threadId {
+            if method == "turn/completed" {
+                activeTurnId = nil
+                activeTurnLastEventAt = nil
+                refreshPromptQueue()
+            }
+            if requiresRefresh {
+                _ = refreshActiveChatIfNeeded(
+                    force: true,
+                    allowActiveTurnRefresh: true,
+                    bypassMinimumInterval: true
+                )
+            }
+        } else if requiresRefresh {
+            refreshChats()
+        }
+    }
+
+    private func handleReplayGap(_ object: [String: JSONValue]) {
+        let previousLastEventId = lastEventId
+        updateLastEventId(from: object)
+        let requested = object["requestedAfterEventId"]?.intValue ?? previousLastEventId
+        let oldest = object["oldestEventId"]?.intValue ?? 0
+        let serverLast = object["lastEventId"]?.intValue ?? lastEventId
+        let missed = max(1, max(oldest - requested - 1, serverLast - previousLastEventId))
+        transcriptSyncMissedEventCount = max(transcriptSyncMissedEventCount, missed)
+        appendEvent("sync", "replay gap \(missed)")
+        _ = refreshActiveChatIfNeeded(
+            force: true,
+            allowActiveTurnRefresh: true,
+            bypassMinimumInterval: true
+        )
+        refreshChats()
+    }
+
+    private func handleMobileTurnStatus(_ object: [String: JSONValue]) {
+        updateLastEventId(from: object)
+        let type = object["type"]?.stringValue ?? "mobile.turn"
+        let eventThreadId = object["threadId"]?.stringValue
+        let promptBytes = object["promptBytes"]?.intValue
+        let attachmentCount = object["attachmentCount"]?.intValue
+        appendEvent(type, eventThreadId.map(shortThreadId) ?? "")
+
+        guard eventThreadId == nil || eventThreadId == threadId else {
+            return
+        }
+
+        let message = mobileTurnStatusSystemMessage(
+            type: type,
+            language: selectedLanguage,
+            promptBytes: promptBytes,
+            attachmentCount: attachmentCount
+        )
+        transcriptStore.addSystemMessage(message)
+        publishTranscript()
+
+        if type == "mobile.turn.persist_failed" {
+            lastError = userFacingBridgeError([
+                "message": object["message"] ?? .string(message)
+            ])
+        }
     }
 
     @discardableResult
@@ -1800,7 +1891,7 @@ final class BridgeClient: ObservableObject {
         ]
         approvals = []
         diagnostics = BridgeDiagnostics(json: [
-            "bridgeVersion": .string("0.8.0"),
+            "bridgeVersion": .string("0.9.0"),
             "protocolVersion": .number(1),
             "minClientProtocolVersion": .number(1),
             "host": .string("100.75.40.51"),
@@ -1890,7 +1981,7 @@ final class BridgeClient: ObservableObject {
                 )
             ]
             self.diagnostics = BridgeDiagnostics(json: [
-                "bridgeVersion": .string("0.8.0"),
+                "bridgeVersion": .string("0.9.0"),
                 "protocolVersion": .number(1),
                 "minClientProtocolVersion": .number(1),
                 "host": .string("100.75.40.51"),

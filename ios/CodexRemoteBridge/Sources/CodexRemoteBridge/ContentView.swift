@@ -294,6 +294,70 @@ private struct OnboardingStep: View {
     }
 }
 
+private struct SetupChecklistCard: View {
+    @EnvironmentObject private var bridge: BridgeClient
+    let items: [SetupChecklistItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "checklist.checked")
+                    .foregroundStyle(AppPalette.accent)
+                Text(bridge.copy.setupChecklistTitle)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppPalette.ink)
+                Spacer()
+                Text("\(items.filter(\.isComplete).count)/\(items.count)")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(items) { item in
+                    SetupChecklistRow(item: item)
+                }
+            }
+        }
+        .panelStyle(border: AppPalette.accent.opacity(0.18))
+    }
+}
+
+private struct SetupChecklistRow: View {
+    let item: SetupChecklistItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: item.isComplete ? "checkmark.circle.fill" : item.systemImage)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(item.isComplete ? AppPalette.success : AppPalette.accent)
+                .frame(width: 24, height: 24)
+                .background((item.isComplete ? AppPalette.success : AppPalette.accent).opacity(0.10), in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(AppPalette.ink)
+                Text(item.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private func setupNotificationsAllowed(_ status: MobileNotificationAuthorizationStatus) -> Bool {
+    switch status {
+    case .authorized, .provisional, .ephemeral:
+        return true
+    case .unknown, .notDetermined, .denied:
+        return false
+    }
+}
+
 private struct PairingScreen: View {
     @EnvironmentObject private var bridge: BridgeClient
     @Binding var pairingText: String
@@ -314,6 +378,16 @@ private struct PairingScreen: View {
                 .pickerStyle(.segmented)
 
                 ConnectionPanel(state: bridge.connectionState)
+
+                SetupChecklistCard(
+                    items: setupChecklistItems(
+                        language: bridge.selectedLanguage,
+                        isConnected: bridge.isConnected,
+                        hasPairing: bridge.hasSavedPairing,
+                        hasProject: !bridge.selectedProjectPath.isEmpty,
+                        notificationsAllowed: setupNotificationsAllowed(bridge.notificationAuthorizationStatus)
+                    )
+                )
 
                 if !bridge.savedBridges.isEmpty {
                     SavedBridgeList(
@@ -419,6 +493,20 @@ private struct ProjectScreen: View {
 
                 if bridge.notificationAuthorizationStatus == .denied {
                     NotificationRecoveryBanner()
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 6)
+                        .transition(.opacity)
+                }
+
+                let checklist = setupChecklistItems(
+                    language: bridge.selectedLanguage,
+                    isConnected: bridge.isConnected,
+                    hasPairing: bridge.hasSavedPairing,
+                    hasProject: !bridge.selectedProjectPath.isEmpty,
+                    notificationsAllowed: setupNotificationsAllowed(bridge.notificationAuthorizationStatus)
+                )
+                if checklist.contains(where: { !$0.isComplete }) {
+                    SetupChecklistCard(items: checklist)
                         .padding(.horizontal, 12)
                         .padding(.bottom, 6)
                         .transition(.opacity)

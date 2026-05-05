@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.8.0`
+Current version: `v0.9.0`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs from a polished mobile UI.
 
@@ -16,26 +16,27 @@ The Mac bridge launches `codex app-server` over stdio JSONL and exposes a narrow
 - Pair an iPhone to one or more Macs with a QR capability token.
 - Start, steer, stop, and queue Codex turns from iPhone.
 - Pick projects, create projects, choose models, tune reasoning intelligence, and change permission mode.
-- Stream transcripts with attachments, searchable history, collapsed long bubbles, tap-to-copy text, approval cards, Desktop Sync 2.0 catch-up status, and manual transcript refresh.
+- Stream transcripts with attachments, searchable history, collapsed long bubbles, tap-to-copy text, approval cards, replay-gap catch-up, desktop activity hints, and manual transcript refresh.
 - Keep per-bridge drafts, quick prompts, local transcripts, and mobile handoff history across app restarts.
-- Use the macOS Control Center to update version-drifted installs, repair stale bridge installs, rotate tokens, generate pairing QR codes, inspect diagnostics, and review iPhone-authored handoff prompts.
+- See safe iPhone request delivery/persistence status in the chat without exposing prompt bodies in bridge logs.
+- Use the macOS Control Center to update version-drifted installs, repair stale bridge installs, rotate tokens, generate pairing QR codes, inspect diagnostics, review iPhone-authored handoff prompts, and see recent action logs.
 
 ## Status
 
-`v0.8.0` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
+`v0.9.0` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
 
 ## Demo
 
 <p align="center">
-  <img src="media/maludex-simulator-cuts.gif" alt="maludex v0.8.0 animated iOS Simulator UI tour" width="420">
+  <img src="media/maludex-simulator-cuts.gif" alt="maludex v0.9.0 animated iOS Simulator UI tour" width="420">
 </p>
 
 The demo above is an animated cut reel built from the actual SwiftUI app running in Xcode's iOS Simulator with `scripts/create-demo-video.sh`. The script launches the installed app with local demo state, records the real maludex UI with `simctl`, and rebuilds the GIF from captured Simulator frames. [Watch the MP4 version](media/maludex-simulator-demo.mp4).
 
 ## Features
 
-- SwiftUI iPhone client with QR pairing, first-run onboarding, camera scanner, connection status, searchable project/model pickers, project favorites, editable saved quick prompts, prompt composer, streaming transcript, Desktop Sync 2.0 recovery status, approval cards, attachment picker, tap-to-expand image previews, one-tap code block copying, voice input, and local transcript persistence.
-- SwiftUI macOS Control Center app for bridge health, recommended next steps, one-click update, LaunchAgent repair, restart/start/stop, token rotation, pairing QR generation, and desktop review of iPhone-authored handoff prompts.
+- SwiftUI iPhone client with QR pairing, first-run onboarding, setup checklist, camera scanner, connection status, searchable project/model pickers, project favorites, editable saved quick prompts, prompt composer, streaming transcript, replay-gap recovery status, approval cards, attachment picker, tap-to-expand image previews, one-tap code block copying, voice input, and local transcript persistence.
+- SwiftUI macOS Control Center app for bridge health, recommended next steps, one-click update, LaunchAgent repair, restart/start/stop, token rotation, pairing QR generation, action history, and desktop review of iPhone-authored handoff prompts.
 - Multiple saved Mac bridges, each with its own Keychain token and per-bridge session state.
 - Node.js + TypeScript Mac bridge that translates between mobile WebSocket messages and Codex JSON-RPC over stdio JSONL.
 - Project listing and project creation under configured roots.
@@ -44,7 +45,8 @@ The demo above is an animated cut reel built from the actual SwiftUI app running
 - Image and file attachments copied into the selected workspace before a turn.
 - Subagent start, manual compact, approval response, and active-turn stop.
 - Diagnostics dashboard with bridge health, Codex status, runtime counters, and token-free copyable reports.
-- Reconnect-safe approval delivery: pending Codex approvals are replayed to the next authenticated iPhone connection instead of being declined immediately.
+- Reconnect-safe approval delivery: pending Codex approvals are replayed to the next authenticated iPhone connection instead of being declined immediately, and resolved approvals are reflected back into the iPhone chat.
+- Reconnect-safe event IDs, replay-gap notifications, and desktop thread-activity hints help the iPhone catch up when WebSocket messages were missed.
 - CI and tag-driven GitHub Release automation for safer public releases.
 - Integration tests with a mocked Codex app-server process.
 

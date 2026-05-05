@@ -56,6 +56,22 @@ final class DoctorReportTests: XCTestCase {
         XCTAssertEqual(ControlCenterCopy(language: .korean).recommendedActionTitle("repair"), "복구")
         XCTAssertEqual(ControlCenterCopy(language: .english).updateButton, "Update")
         XCTAssertEqual(ControlCenterCopy(language: .korean).recommendedActionTitle("update"), "업데이트")
+        XCTAssertEqual(ControlCenterCopy(language: .english).activityLogTitle, "Activity Log")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).activityLogTitle, "작업 로그")
+        XCTAssertEqual(ControlCenterCopy(language: .english).actionStartedTitle("Restart"), "Restart started")
+        XCTAssertEqual(ControlCenterCopy(language: .korean).actionSucceededTitle("재시작"), "재시작 완료")
+    }
+
+    func testControlCenterRunLogEntryFormatsStatus() {
+        let started = ControlCenterRunLogEntry(action: "Restart", status: .running, detail: "Restarting bridge")
+        let succeeded = ControlCenterRunLogEntry(action: "Restart", status: .succeeded, detail: "Bridge restarted")
+        let failed = ControlCenterRunLogEntry(action: "Restart", status: .failed, detail: "launchctl failed")
+
+        XCTAssertEqual(started.status.systemImage, "clock.arrow.circlepath")
+        XCTAssertEqual(succeeded.status.systemImage, "checkmark.circle.fill")
+        XCTAssertEqual(failed.status.systemImage, "exclamationmark.triangle.fill")
+        XCTAssertEqual(started.action, "Restart")
+        XCTAssertEqual(succeeded.detail, "Bridge restarted")
     }
 
     func testDecodesHealthyDoctorReport() throws {

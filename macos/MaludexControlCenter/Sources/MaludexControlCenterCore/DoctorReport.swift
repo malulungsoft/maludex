@@ -48,6 +48,8 @@ public struct ControlCenterCopy: Equatable {
     public var offlineValue: String { text("Offline", "오프라인") }
     public var checkingValue: String { text("Checking", "확인 중") }
     public var bridgeActionsTitle: String { text("Bridge Actions", "브릿지 작업") }
+    public var activityLogTitle: String { text("Activity Log", "작업 로그") }
+    public var activityLogEmpty: String { text("No actions have run in this window yet.", "아직 이 창에서 실행한 작업이 없습니다.") }
     public var repairButton: String { text("Repair", "복구") }
     public var updateButton: String { text("Update", "업데이트") }
     public var restartButton: String { text("Restart", "재시작") }
@@ -77,6 +79,18 @@ public struct ControlCenterCopy: Equatable {
     public var collapsePromptButton: String { text("Collapse", "접기") }
     public var copyQRImageButton: String { text("Copy QR Image", "QR 이미지 복사") }
     public var revealQRImageButton: String { text("Reveal in Finder", "Finder에서 보기") }
+
+    public func actionStartedTitle(_ action: String) -> String {
+        language == .korean ? "\(action) 시작" : "\(action) started"
+    }
+
+    public func actionSucceededTitle(_ action: String) -> String {
+        language == .korean ? "\(action) 완료" : "\(action) completed"
+    }
+
+    public func actionFailedTitle(_ action: String) -> String {
+        language == .korean ? "\(action) 실패" : "\(action) failed"
+    }
 
     public func statusLabel(_ status: DoctorStatus) -> String {
         switch status {
@@ -108,6 +122,45 @@ public struct ControlCenterCopy: Equatable {
 
     private func text(_ english: String, _ korean: String) -> String {
         language == .korean ? korean : english
+    }
+}
+
+public enum ControlCenterRunLogStatus: String, Codable, Equatable {
+    case running
+    case succeeded
+    case failed
+
+    public var systemImage: String {
+        switch self {
+        case .running:
+            return "clock.arrow.circlepath"
+        case .succeeded:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        }
+    }
+}
+
+public struct ControlCenterRunLogEntry: Identifiable, Codable, Equatable {
+    public let id: UUID
+    public let createdAt: Date
+    public let action: String
+    public let status: ControlCenterRunLogStatus
+    public let detail: String
+
+    public init(
+        id: UUID = UUID(),
+        createdAt: Date = Date(),
+        action: String,
+        status: ControlCenterRunLogStatus,
+        detail: String
+    ) {
+        self.id = id
+        self.createdAt = createdAt
+        self.action = action
+        self.status = status
+        self.detail = detail
     }
 }
 
