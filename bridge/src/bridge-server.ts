@@ -90,7 +90,7 @@ const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
 const MAX_PROMPT_QUEUE_ITEMS = 50;
-const BRIDGE_VERSION = "0.9.6";
+const BRIDGE_VERSION = "0.9.7";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
@@ -385,8 +385,7 @@ export class BridgeServer {
         lastEventId: this.lastEventId(),
         oldestEventId: this.oldestEventId()
       });
-      this.replayEvents(afterEventId);
-      this.emitReplayGapIfNeeded(afterEventId);
+      this.replayEventsOrGap(afterEventId);
       this.emitRestoredPromptQueues();
       void this.resumeIdlePromptQueues();
       void this.reconcileDesktopWorkspaceRoots("mobile.connect");
@@ -1037,7 +1036,7 @@ export class BridgeServer {
   }
 
   private async sendBridgeStatus(ws: WebSocket, message: Extract<MobileMessage, { type: "bridge.status" }>): Promise<void> {
-    await this.reconcileDesktopWorkspaceRoots("bridge.status");
+    void this.reconcileDesktopWorkspaceRoots("bridge.status");
     const address = this.address();
     const status = {
       bridgeVersion: BRIDGE_VERSION,
@@ -1888,15 +1887,30 @@ export class BridgeServer {
     this.sendToMobile(event);
   }
 
-  private replayEvents(afterEventId: number): void {
+  private replayEventsOrGap(afterEventId: number | null): void {
     if (!this.mobile || this.mobile.readyState !== WebSocket.OPEN) {
       return;
     }
-    for (const event of this.eventBuffer) {
-      if (event.eventId > afterEventId) {
-        this.send(this.mobile, { ...event, replayed: true });
-      }
+    if (afterEventId === null) {
+      return;
     }
+    if (this.emitReplayGapIfNeeded(afterEventId)) {
+      return;
+    }
+
+    const events = this.eventBuffer.filter((event) => event.eventId > afterEventId);
+    if (events.length > this.maxReplayEventsOnConnect()) {
+      this.emitReplayGap(afterEventId);
+      return;
+    }
+
+    for (const event of events) {
+      this.send(this.mobile, { ...event, replayed: true });
+    }
+  }
+
+  private maxReplayEventsOnConnect(): number {
+    return Math.max(0, Math.min(100, this.maxQueuedMessages - 8));
   }
 
   private lastEventId(): number {
@@ -1907,11 +1921,17 @@ export class BridgeServer {
     return this.eventBuffer[0]?.eventId ?? 0;
   }
 
-  private emitReplayGapIfNeeded(afterEventId: number): void {
+  private emitReplayGapIfNeeded(afterEventId: number): boolean {
     const oldest = this.oldestEventId();
     if (oldest === 0 || afterEventId >= oldest - 1) {
-      return;
+      return false;
     }
+    this.emitReplayGap(afterEventId);
+    return true;
+  }
+
+  private emitReplayGap(afterEventId: number): void {
+    const oldest = this.oldestEventId();
     this.emitToMobile({
       type: "sync.replay_gap",
       requestedAfterEventId: afterEventId,
@@ -1949,13 +1969,16 @@ export class BridgeServer {
   }
 }
 
-function afterEventIdFromRequest(request: import("node:http").IncomingMessage): number {
+function afterEventIdFromRequest(request: import("node:http").IncomingMessage): number | null {
   const headerValue = request.headers["last-event-id"];
   const fromHeader = Array.isArray(headerValue) ? headerValue[0] : headerValue;
   const url = new URL(request.url ?? "/", "ws://localhost");
-  const raw = url.searchParams.get("afterEventId") ?? fromHeader ?? "0";
+  const raw = url.searchParams.get("afterEventId") ?? fromHeader;
+  if (raw == null) {
+    return null;
+  }
   const value = Number(raw);
-  return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
 function threadActivityFromCodexNotification(method: string, params: Record<string, unknown> | undefined): JsonObject | null {

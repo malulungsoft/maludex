@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.7 - 2026-05-06
+
+- Keep fresh or reset mobile clients connected by skipping bulk event replay when no reconnect cursor is provided.
+- Emit a refresh gap instead of replaying an oversized buffered event burst, preventing `1013 client too slow` disconnects on stale iPhone sessions.
+- Make `bridge.status` respond immediately instead of waiting for Desktop workspace reconciliation.
+
 ## 0.9.6 - 2026-05-05
 
 - Match Codex Desktop's own workspace activation flow for mobile-created or mobile-opened projects.

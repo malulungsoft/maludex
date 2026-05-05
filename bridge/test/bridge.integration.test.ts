@@ -79,6 +79,10 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+function emitBufferedEvent(server: BridgeServer, message: Record<string, unknown>): void {
+  (server as unknown as { emitToMobile(message: Record<string, unknown>): void }).emitToMobile(message);
+}
+
 function closeSocket(ws: WebSocket): Promise<void> {
   return new Promise((resolve) => {
     if (ws.readyState === WebSocket.CLOSED) {
@@ -261,7 +265,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.9.6",
+      bridgeVersion: "0.9.7",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -364,7 +368,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     oldestEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.9.6"
+    bridgeVersion: "0.9.7"
   });
 
   ws.send(
@@ -665,6 +669,56 @@ test("emits replay gaps and thread activity hints so mobile clients can catch up
   });
 
   replayWs.close();
+  await rm(temp, { recursive: true, force: true });
+});
+
+test("keeps reset or stale mobile clients connected instead of bulk replaying too much history", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "codex-remote-bridge-"));
+  const token = randomBytes(32).toString("base64url");
+  const tokenFile = await writeTokenFile(temp, token, 0o600);
+
+  const server = new BridgeServer({
+    host: "127.0.0.1",
+    port: 0,
+    tokenFile,
+    codexCommand: process.execPath,
+    codexArgs: [fixturePath],
+    eventReplayLimit: 20,
+    maxQueuedMessages: 3,
+    logger: createLogger({ sink: () => undefined })
+  });
+  servers.push(server);
+
+  await server.start();
+  for (let index = 0; index < 8; index += 1) {
+    emitBufferedEvent(server, { type: "codex.event", method: `test/event-${index}` });
+  }
+
+  const address = server.address();
+  const wsUrl = `ws://${address.host}:${address.port}`;
+  const freshWs = await connect(wsUrl, token);
+  await waitForMessage(freshWs, (message) => message.type === "bridge.ready");
+  freshWs.send(JSON.stringify({ id: "fresh-ping", type: "ping" }));
+  await expect(waitForMessage(freshWs, (message) => message.id === "fresh-ping")).resolves.toMatchObject({
+    type: "response",
+    ok: true
+  });
+  await closeSocket(freshWs);
+
+  const staleWs = await connect(`${wsUrl}?afterEventId=0`, token);
+  await waitForMessage(staleWs, (message) => message.type === "bridge.ready");
+  await expect(waitForMessage(staleWs, (message) => message.type === "sync.replay_gap")).resolves.toMatchObject({
+    type: "sync.replay_gap",
+    requestedAfterEventId: 0,
+    requiresRefresh: true
+  });
+  staleWs.send(JSON.stringify({ id: "stale-ping", type: "ping" }));
+  await expect(waitForMessage(staleWs, (message) => message.id === "stale-ping")).resolves.toMatchObject({
+    type: "response",
+    ok: true
+  });
+
+  staleWs.close();
   await rm(temp, { recursive: true, force: true });
 });
 
