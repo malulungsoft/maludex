@@ -245,8 +245,16 @@ final class BridgeClient: ObservableObject {
         demoPlaybackTask?.cancel()
     }
 
+    var isDemoScenario: Bool {
+        isDemoMode
+    }
+
     func setAppIsActive(_ isActive: Bool) {
         appIsActive = isActive
+        if isDemoMode {
+            notificationAuthorizationStatus = .authorized
+            return
+        }
         refreshNotificationAuthorizationStatus()
         if isActive {
             refreshActiveChatIfNeeded(force: true)
@@ -1891,7 +1899,7 @@ final class BridgeClient: ObservableObject {
         ]
         approvals = []
         diagnostics = BridgeDiagnostics(json: [
-            "bridgeVersion": .string("0.9.0"),
+            "bridgeVersion": .string("0.9.1"),
             "protocolVersion": .number(1),
             "minClientProtocolVersion": .number(1),
             "host": .string("100.75.40.51"),
@@ -1981,7 +1989,7 @@ final class BridgeClient: ObservableObject {
                 )
             ]
             self.diagnostics = BridgeDiagnostics(json: [
-                "bridgeVersion": .string("0.9.0"),
+                "bridgeVersion": .string("0.9.1"),
                 "protocolVersion": .number(1),
                 "minClientProtocolVersion": .number(1),
                 "host": .string("100.75.40.51"),

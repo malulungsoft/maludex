@@ -185,7 +185,7 @@ struct ContentView: View {
             .onAppear {
                 bridge.startDemoPlaybackIfNeeded()
                 bridge.setAppIsActive(scenePhase == .active)
-                if !hasSeenOnboarding {
+                if !bridge.isDemoScenario && !hasSeenOnboarding {
                     onboardingPresented = true
                 }
                 guard !attemptedSavedConnect else { return }
