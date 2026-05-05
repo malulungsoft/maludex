@@ -645,7 +645,7 @@ private func normalizedLocaleIdentifier(_ value: String) -> String {
 
 let mobileProtocolVersion = 1
 let minimumSupportedBridgeProtocolVersion = 1
-let maludexClientVersion = "0.9.1"
+let maludexClientVersion = "0.9.2"
 
 func bridgeCompatibilityWarning(readyMessage: [String: JSONValue]) -> String? {
     let bridgeProtocol = Int(readyMessage["protocolVersion"]?.numberValue ?? 0)

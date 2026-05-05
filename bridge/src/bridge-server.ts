@@ -7,6 +7,7 @@ import path from "node:path";
 import WebSocket, { WebSocketServer } from "ws";
 import { CapabilityAuthenticator, loadCapabilityTokenFromFile } from "./auth.js";
 import { CodexRpcClient } from "./codex-rpc.js";
+import { registerCodexDesktopWorkspaceRoot } from "./codex-desktop-state.js";
 import { createLogger, type Logger } from "./logger.js";
 import {
   MobileHandoffStore,
@@ -81,7 +82,7 @@ const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
 const MAX_PROMPT_QUEUE_ITEMS = 50;
-const BRIDGE_VERSION = "0.9.1";
+const BRIDGE_VERSION = "0.9.2";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
@@ -105,6 +106,8 @@ export type BridgeServerOptions = {
   promptQueueFile?: string;
   mobileHandoffFile?: string;
   mobileHandoffMaxEntries?: number;
+  codexHome?: string;
+  desktopWorkspaceSync?: boolean;
 };
 
 export class BridgeServer {
@@ -137,6 +140,9 @@ export class BridgeServer {
   private readonly promptQueueFile: string;
   private readonly mobileHandoffStore: MobileHandoffStore;
   private readonly mobileHandoffMaxEntries: number;
+  private readonly codexHome?: string;
+  private readonly desktopWorkspaceSync: boolean;
+  private desktopWorkspaceSyncTail: Promise<void> = Promise.resolve();
   private readonly approvalRequestTimeoutMs: number;
   private nextEventId = 1;
   private nextPromptQueueId = 1;
@@ -162,6 +168,8 @@ export class BridgeServer {
       options.mobileHandoffFile ?? path.join(path.dirname(options.tokenFile), "mobile-handoff.jsonl"),
       this.mobileHandoffMaxEntries
     );
+    this.codexHome = options.codexHome ?? (typeof options.codexEnv?.CODEX_HOME === "string" ? options.codexEnv.CODEX_HOME : undefined);
+    this.desktopWorkspaceSync = options.desktopWorkspaceSync === true;
     this.codex = new CodexRpcClient({
       command: options.codexCommand,
       args: options.codexArgs,
@@ -400,6 +408,7 @@ export class BridgeServer {
     });
     const result = await this.codex.request("thread/start", asJsonValue(params));
     this.rememberThreadCwd(result, typeof params.cwd === "string" ? params.cwd : undefined);
+    await this.registerDesktopWorkspace(params.cwd, typeof params.cwd === "string" ? path.basename(params.cwd) : undefined);
     const threadId = threadIdFromThreadResult(result);
     if (threadId) {
       this.resumedThreads.add(threadId);
@@ -425,6 +434,7 @@ export class BridgeServer {
 
     const cwd = typeof message.cwd === "string" ? message.cwd : this.threadCwds.get(message.threadId);
     try {
+      await this.registerDesktopWorkspace(cwd);
       await this.ensureThreadResumed(message.threadId, message, cwd);
       const input = await this.buildTurnInput(message.prompt, message.attachments, cwd);
       const sandbox = safeSandbox(message.sandbox);
@@ -666,6 +676,7 @@ export class BridgeServer {
     }
 
     const cwd = typeof message.cwd === "string" ? message.cwd : this.threadCwds.get(message.threadId);
+    await this.registerDesktopWorkspace(cwd);
     await this.ensureThreadResumed(message.threadId, message, cwd);
     const sandbox = safeSandbox(message.sandbox);
     const approvalPolicy = safeApprovalPolicy(message.approvalPolicy);
@@ -814,6 +825,7 @@ export class BridgeServer {
 
     await mkdir(projectPath, { recursive: false });
     const project: ProjectSummary = { path: projectPath, name, source: "created" };
+    await this.registerDesktopWorkspace(projectPath, name);
     this.sendOk(ws, message.id, { project });
   }
 
@@ -863,6 +875,7 @@ export class BridgeServer {
     const thread = await this.readThreadMetadata(message.threadId);
     if (thread) {
       this.rememberThreadCwd(asJsonValue({ thread }));
+      await this.registerDesktopWorkspace(thread.cwd, typeof thread.cwd === "string" ? path.basename(thread.cwd) : undefined);
     }
     const history = await this.chatHistoryPage(message.threadId, {
       cursor: undefined,
@@ -1181,6 +1194,7 @@ export class BridgeServer {
       const thread = isRecord(params.thread) ? params.thread : null;
       if (thread && typeof thread.id === "string" && typeof thread.cwd === "string") {
         this.threadCwds.set(thread.id, thread.cwd);
+        void this.registerDesktopWorkspace(thread.cwd, path.basename(thread.cwd));
       }
       if (thread && typeof thread.id === "string") {
         this.resumedThreads.add(thread.id);
@@ -1301,6 +1315,34 @@ export class BridgeServer {
     if (cwd) {
       this.threadCwds.set(result.thread.id, cwd);
     }
+  }
+
+  private async registerDesktopWorkspace(root: unknown, label?: string): Promise<void> {
+    if (!this.desktopWorkspaceSync || typeof root !== "string" || root.trim() === "") {
+      return;
+    }
+    const register = async () => {
+      try {
+        const result = await registerCodexDesktopWorkspaceRoot(root, {
+          codexHome: this.codexHome,
+          label
+        });
+        if (result.changed) {
+          this.logger.info("desktop.workspace_registered", {
+            root: result.root,
+            updatedKeys: result.updatedKeys
+          });
+        }
+      } catch (error) {
+        this.logger.warn("desktop.workspace_register_failed", {
+          root,
+          message: error instanceof Error ? error.message : String(error)
+        });
+      }
+    };
+    const next = this.desktopWorkspaceSyncTail.then(register, register);
+    this.desktopWorkspaceSyncTail = next.catch(() => undefined);
+    await next;
   }
 
   private async readThreadMetadata(threadId: string): Promise<Record<string, unknown> | null> {

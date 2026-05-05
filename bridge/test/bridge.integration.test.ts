@@ -215,7 +215,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.9.1",
+      bridgeVersion: "0.9.2",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -318,7 +318,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     oldestEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.9.1"
+    bridgeVersion: "0.9.2"
   });
 
   ws.send(
@@ -628,9 +628,21 @@ test("lists bounded projects, creates a selected project, and forwards model cho
   const projectRoot = path.join(temp, "projects");
   const existingProject = path.join(projectRoot, "Existing App");
   const recentProject = path.join(projectRoot, "Recent Codex App");
+  const codexHome = path.join(temp, "codex-home");
+  const globalStateFile = path.join(codexHome, ".codex-global-state.json");
   await mkdir(existingProject, { recursive: true });
   await mkdir(recentProject, { recursive: true });
+  await mkdir(codexHome, { recursive: true });
   await writeFile(path.join(existingProject, "package.json"), "{}\n");
+  await writeFile(
+    globalStateFile,
+    `${JSON.stringify({
+      "active-workspace-roots": [],
+      "electron-saved-workspace-roots": [],
+      "electron-workspace-root-labels": {},
+      "project-order": []
+    })}\n`
+  );
 
   const token = randomBytes(32).toString("base64url");
   const tokenFile = await writeTokenFile(temp, token, 0o600);
@@ -644,6 +656,8 @@ test("lists bounded projects, creates a selected project, and forwards model cho
       MOCK_CODEX_REPORT_FILE: reportFile,
       MOCK_CODEX_RECENT_CWD: recentProject
     },
+    codexHome,
+    desktopWorkspaceSync: true,
     projectRoots: [projectRoot],
     logger: createLogger({ sink: () => undefined })
   });
@@ -694,6 +708,21 @@ test("lists bounded projects, creates a selected project, and forwards model cho
       }
     }
   });
+  const createdProject = path.join(projectRoot, "Created From iPhone");
+  const desktopStateAfterCreate = JSON.parse(await readFile(globalStateFile, "utf8")) as Record<string, unknown>;
+  expect(desktopStateAfterCreate["active-workspace-roots"]).toContain(createdProject);
+  expect(desktopStateAfterCreate["electron-saved-workspace-roots"]).toContain(createdProject);
+  expect(desktopStateAfterCreate["project-order"]).toContain(createdProject);
+  expect(desktopStateAfterCreate["electron-workspace-root-labels"]).toMatchObject({
+    [createdProject]: "Created From iPhone"
+  });
+
+  ws.send(JSON.stringify({ id: "mobile-thread-workspace-sync", type: "thread.start", cwd: existingProject }));
+  await waitForMessage(ws, (message) => message.id === "mobile-thread-workspace-sync");
+  const desktopStateAfterThread = JSON.parse(await readFile(globalStateFile, "utf8")) as Record<string, unknown>;
+  expect(desktopStateAfterThread["active-workspace-roots"]).toContain(existingProject);
+  expect(desktopStateAfterThread["electron-saved-workspace-roots"]).toContain(existingProject);
+  expect(desktopStateAfterThread["project-order"]).toContain(existingProject);
 
   ws.send(JSON.stringify({ id: "mobile-models", type: "model.list" }));
   const models = await waitForMessage<Record<string, unknown>>(ws, (message) => message.id === "mobile-models");

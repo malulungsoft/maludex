@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.2 - 2026-05-05
+
+- Register mobile-created and mobile-selected project paths in Codex Desktop workspace state so iPhone-created projects and their Codex threads are visible in the desktop app.
+- Add `BRIDGE_SYNC_CODEX_DESKTOP=0` / `--no-desktop-sync` for users who do not want maludex to touch Codex Desktop workspace-root state.
+
 ## 0.9.1 - 2026-05-05
 
 - Rebuild the README demo GIF as a continuous animation from real Xcode iOS Simulator video instead of a static cut reel.

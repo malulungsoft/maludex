@@ -15,6 +15,8 @@ type CliOptions = {
   codexArgs: string[];
   tokenFile: string;
   mobileHandoffMaxEntries?: number;
+  codexHome?: string;
+  desktopWorkspaceSync: boolean;
   qr: boolean;
   name: string;
   tls: boolean;
@@ -30,6 +32,8 @@ async function main() {
     port: options.port,
     tokenFile: options.tokenFile,
     mobileHandoffMaxEntries: options.mobileHandoffMaxEntries,
+    codexHome: options.codexHome,
+    desktopWorkspaceSync: options.desktopWorkspaceSync,
     codexCommand: options.codexCommand,
     codexArgs: options.codexArgs,
     logger
@@ -76,6 +80,8 @@ function parseArgs(args: string[]): CliOptions {
     codexCommand: process.env.CODEX_BIN ?? "codex",
     codexArgs: ["app-server", "--listen", "stdio://"],
     tokenFile: process.env.BRIDGE_TOKEN_FILE ?? defaultTokenFile(),
+    codexHome: process.env.CODEX_HOME,
+    desktopWorkspaceSync: process.env.BRIDGE_SYNC_CODEX_DESKTOP !== "0",
     mobileHandoffMaxEntries: parseOptionalBoundedInteger(
       process.env.BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES,
       "BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES"
@@ -97,6 +103,10 @@ function parseArgs(args: string[]): CliOptions {
       options.codexArgs.push(requiredValue(args, ++index, "--codex-arg"));
     } else if (arg === "--token-file") {
       options.tokenFile = requiredValue(args, ++index, "--token-file");
+    } else if (arg === "--codex-home") {
+      options.codexHome = requiredValue(args, ++index, "--codex-home");
+    } else if (arg === "--no-desktop-sync") {
+      options.desktopWorkspaceSync = false;
     } else if (arg === "--mobile-handoff-max-entries") {
       options.mobileHandoffMaxEntries = parseBoundedInteger(
         requiredValue(args, ++index, "--mobile-handoff-max-entries"),
@@ -174,6 +184,8 @@ Options:
   --token-file <p>   0600 file containing the bearer capability token.
   --mobile-handoff-max-entries <n>
                       Keep this many iPhone-authored handoff prompts. Defaults to 200.
+  --no-desktop-sync   Do not add mobile-selected projects to Codex Desktop workspace roots.
+  --codex-home <dir>  Codex home directory for desktop workspace sync. Defaults to CODEX_HOME or ~/.codex.
   --name <name>      Friendly bridge name shown on the iPhone. Defaults to hostname.
   --tls              Encode wss pairing for an Nginx/TLS endpoint.
   --codex-bin <bin>  Codex executable. Defaults to codex.

@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/malulungsoft/maludex)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d)](package.json)
 
-Current version: `v0.9.1`
+Current version: `v0.9.2`
 
 maludex is a local-first iPhone companion by malulung soft for driving Codex on one or more Macs from a polished mobile UI.
 
@@ -19,16 +19,17 @@ The Mac bridge launches `codex app-server` over stdio JSONL and exposes a narrow
 - Stream transcripts with attachments, searchable history, collapsed long bubbles, tap-to-copy text, approval cards, replay-gap catch-up, desktop activity hints, and manual transcript refresh.
 - Keep per-bridge drafts, quick prompts, local transcripts, and mobile handoff history across app restarts.
 - See safe iPhone request delivery/persistence status in the chat without exposing prompt bodies in bridge logs.
+- Have mobile-created or mobile-selected projects appear in the Codex Desktop workspace list.
 - Use the macOS Control Center to update version-drifted installs, repair stale bridge installs, rotate tokens, generate pairing QR codes, inspect diagnostics, review iPhone-authored handoff prompts, and see recent action logs.
 
 ## Status
 
-`v0.9.1` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
+`v0.9.2` is a public preview for private localhost, LAN, Tailscale, or carefully controlled Nginx/TLS workflows. It is not hardened remote administration software and should not be exposed directly to the public internet.
 
 ## Demo
 
 <p align="center">
-  <img src="media/maludex-simulator-demo.gif" alt="maludex v0.9.1 animated iOS Simulator UI tour" width="420">
+  <img src="media/maludex-simulator-demo.gif" alt="maludex v0.9.2 animated iOS Simulator UI tour" width="420">
 </p>
 
 The demo above is a continuous animated GIF built from the actual SwiftUI app running in Xcode's iOS Simulator with `scripts/create-demo-video.sh`. The script launches the installed app with local demo state, records the real maludex UI with `simctl`, and rebuilds the GIF from the captured Simulator video. [Watch the MP4 version](media/maludex-simulator-demo.mp4).
@@ -65,6 +66,7 @@ The demo above is a continuous animated GIF built from the actual SwiftUI app ru
 - The iPhone app persists the current prompt draft, saved quick prompts, and recent transcript locally per paired bridge so app restarts do not wipe work in progress. Those local app settings can contain prompt bodies; do not export device backups or diagnostics publicly.
 - Queued mobile prompts are persisted locally so they can resume after a bridge restart. That queue file can contain prompt bodies and attachment references; keep it private, keep its `0600` permissions, and never commit or share it.
 - iPhone-authored prompts are also copied into `~/.codex-iphone-remote-bridge/mobile-handoff.jsonl` with `0600` permissions so a desktop Codex session can explicitly recover what was sent from mobile. This is not a log stream, but it can contain prompt bodies; treat it as private and never commit or share it. The bridge keeps only the most recent 200 handoff entries by default; set `BRIDGE_MOBILE_HANDOFF_MAX_ENTRIES` or `--mobile-handoff-max-entries` to reduce or tune retention.
+- By default the bridge also adds mobile-created or mobile-selected project paths to Codex Desktop's local workspace-root state at `~/.codex/.codex-global-state.json`, so those projects and their Codex threads can appear in the desktop app. This writes project paths only, not prompt bodies. Set `BRIDGE_SYNC_CODEX_DESKTOP=0` or start with `--no-desktop-sync` to disable it.
 - Mobile attachments are copied into the selected workspace under `.codex-mobile-attachments/` with `0600` file permissions. Treat those files as local project data.
 - A paired and unlocked iPhone should be treated as a trusted device. It can view recent transcript content and respond to approval requests.
 - Approval requests are kept pending for mobile reconnects, but v1 has no APNs/cloud push relay. Background notifications are local iOS notifications and can only fire when the app is still able to receive or reconnect to the bridge before the approval timeout. If an approval card is already visible and you background the app, maludex re-schedules a local reminder for that pending approval.
