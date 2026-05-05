@@ -10,9 +10,16 @@ export type CodexDesktopWorkspaceSyncResult = {
   updatedKeys: string[];
 };
 
+export type CodexDesktopThreadIndexSyncResult = {
+  changed: boolean;
+  sessionIndexFile: string;
+  id: string;
+};
+
 type JsonRecord = Record<string, unknown>;
 
 const GLOBAL_STATE_FILE = ".codex-global-state.json";
+const SESSION_INDEX_FILE = "session_index.jsonl";
 const WORKSPACE_ROOT_KEYS = ["active-workspace-roots", "electron-saved-workspace-roots", "project-order"] as const;
 
 export async function registerCodexDesktopWorkspaceRoot(
@@ -71,6 +78,43 @@ export async function registerCodexDesktopWorkspaceRoot(
   };
 }
 
+export async function registerCodexDesktopThreadIndex(
+  entry: { id: string; threadName?: string; updatedAt?: string | number | Date },
+  options: { codexHome?: string; fallbackName?: string } = {}
+): Promise<CodexDesktopThreadIndexSyncResult> {
+  const id = normalizeThreadId(entry.id);
+  const codexHome = normalizeCodexHome(options.codexHome);
+  const sessionIndexFile = path.join(codexHome, SESSION_INDEX_FILE);
+  const { entries, mode } = await readSessionIndex(sessionIndexFile);
+  const next = {
+    id,
+    thread_name: normalizeThreadName(entry.threadName ?? options.fallbackName ?? id),
+    updated_at: normalizeUpdatedAt(entry.updatedAt)
+  };
+
+  const index = entries.findIndex((item) => item.id === id);
+  if (index >= 0) {
+    const current = entries[index];
+    if (current.thread_name === next.thread_name && current.updated_at === next.updated_at) {
+      return { changed: false, sessionIndexFile, id };
+    }
+    entries[index] = next;
+  } else {
+    entries.push(next);
+  }
+
+  await mkdir(codexHome, { recursive: true, mode: 0o700 });
+  const tempFile = path.join(
+    codexHome,
+    `.${SESSION_INDEX_FILE}.${process.pid}.${Date.now()}.${randomBytes(4).toString("hex")}.tmp`
+  );
+  await writeFile(tempFile, `${entries.map((item) => JSON.stringify(item)).join("\n")}\n`, { mode });
+  await chmod(tempFile, mode);
+  await rename(tempFile, sessionIndexFile);
+
+  return { changed: true, sessionIndexFile, id };
+}
+
 function normalizeAbsoluteDirectory(root: string): string {
   if (typeof root !== "string" || root.trim() === "") {
     throw new Error("Codex desktop workspace root must be a non-empty absolute path.");
@@ -88,6 +132,34 @@ function normalizeCodexHome(codexHome: string | undefined): string {
   return path.resolve(expanded);
 }
 
+function normalizeThreadId(id: string): string {
+  if (typeof id !== "string" || id.trim() === "") {
+    throw new Error("Codex desktop thread index id must be a non-empty string.");
+  }
+  return id.trim();
+}
+
+function normalizeThreadName(name: string): string {
+  const normalized = name.replace(/\s+/g, " ").trim();
+  return normalized ? normalized.slice(0, 120) : "maludex mobile thread";
+}
+
+function normalizeUpdatedAt(updatedAt: string | number | Date | undefined): string {
+  if (updatedAt instanceof Date) {
+    return updatedAt.toISOString();
+  }
+  if (typeof updatedAt === "number" && Number.isFinite(updatedAt)) {
+    return new Date(updatedAt).toISOString();
+  }
+  if (typeof updatedAt === "string" && updatedAt.trim()) {
+    const parsed = new Date(updatedAt);
+    if (!Number.isNaN(parsed.valueOf())) {
+      return parsed.toISOString();
+    }
+  }
+  return new Date().toISOString();
+}
+
 async function readGlobalState(file: string): Promise<{ state: JsonRecord; mode: number }> {
   try {
     const info = await stat(file);
@@ -103,6 +175,32 @@ async function readGlobalState(file: string): Promise<{ state: JsonRecord; mode:
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
       return { state: {}, mode: 0o600 };
+    }
+    throw error;
+  }
+}
+
+async function readSessionIndex(file: string): Promise<{ entries: Array<{ id: string; thread_name: string; updated_at: string }>; mode: number }> {
+  try {
+    const info = await stat(file);
+    const content = await readFile(file, "utf8");
+    const entries = content
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as unknown)
+      .filter((item): item is { id: string; thread_name: string; updated_at: string } => {
+        return (
+          isRecord(item) &&
+          typeof item.id === "string" &&
+          typeof item.thread_name === "string" &&
+          typeof item.updated_at === "string"
+        );
+      });
+    return { entries, mode: info.mode & 0o777 };
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return { entries: [], mode: 0o644 };
     }
     throw error;
   }

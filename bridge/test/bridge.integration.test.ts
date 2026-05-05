@@ -215,7 +215,7 @@ test("reports bridge diagnostics without prompt bodies or bearer tokens", async 
     type: "response",
     ok: true,
     result: {
-      bridgeVersion: "0.9.2",
+      bridgeVersion: "0.9.3",
       protocolVersion: 1,
       host: "127.0.0.1",
       port: address.port,
@@ -318,7 +318,7 @@ test("bridges authenticated iPhone messages to codex stdio JSONL and approval re
     oldestEventId: 0,
     protocolVersion: 1,
     minClientProtocolVersion: 1,
-    bridgeVersion: "0.9.2"
+    bridgeVersion: "0.9.3"
   });
 
   ws.send(
@@ -630,6 +630,7 @@ test("lists bounded projects, creates a selected project, and forwards model cho
   const recentProject = path.join(projectRoot, "Recent Codex App");
   const codexHome = path.join(temp, "codex-home");
   const globalStateFile = path.join(codexHome, ".codex-global-state.json");
+  const sessionIndexFile = path.join(codexHome, "session_index.jsonl");
   await mkdir(existingProject, { recursive: true });
   await mkdir(recentProject, { recursive: true });
   await mkdir(codexHome, { recursive: true });
@@ -723,6 +724,16 @@ test("lists bounded projects, creates a selected project, and forwards model cho
   expect(desktopStateAfterThread["active-workspace-roots"]).toContain(existingProject);
   expect(desktopStateAfterThread["electron-saved-workspace-roots"]).toContain(existingProject);
   expect(desktopStateAfterThread["project-order"]).toContain(existingProject);
+  const sessionIndexRows = (await readFile(sessionIndexFile, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  expect(sessionIndexRows).toContainEqual(
+    expect.objectContaining({
+      id: "thread-1",
+      thread_name: "Existing App"
+    })
+  );
 
   ws.send(JSON.stringify({ id: "mobile-models", type: "model.list" }));
   const models = await waitForMessage<Record<string, unknown>>(ws, (message) => message.id === "mobile-models");

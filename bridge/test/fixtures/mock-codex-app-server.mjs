@@ -268,7 +268,7 @@ rl.on("line", (line) => {
         reasoningEffort: null
       }
     });
-    send({ method: "thread/started", params: { thread: thread() } });
+    send({ method: "thread/started", params: { thread: thread({ cwd: message.params.cwd ?? process.cwd() }) } });
     return;
   }
 

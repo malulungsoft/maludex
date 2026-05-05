@@ -7,7 +7,7 @@ import path from "node:path";
 import WebSocket, { WebSocketServer } from "ws";
 import { CapabilityAuthenticator, loadCapabilityTokenFromFile } from "./auth.js";
 import { CodexRpcClient } from "./codex-rpc.js";
-import { registerCodexDesktopWorkspaceRoot } from "./codex-desktop-state.js";
+import { registerCodexDesktopThreadIndex, registerCodexDesktopWorkspaceRoot } from "./codex-desktop-state.js";
 import { createLogger, type Logger } from "./logger.js";
 import {
   MobileHandoffStore,
@@ -82,7 +82,7 @@ const DEFAULT_CHAT_TRANSCRIPT_ENTRY_TEXT_BYTE_LIMIT = 12 * 1024;
 const DEFAULT_CHAT_ATTACHMENT_PREVIEW_BYTE_LIMIT = 512 * 1024;
 const DEFAULT_CHAT_HISTORY_TURN_LIMIT = 30;
 const MAX_PROMPT_QUEUE_ITEMS = 50;
-const BRIDGE_VERSION = "0.9.2";
+const BRIDGE_VERSION = "0.9.3";
 const MOBILE_PROTOCOL_VERSION = 1;
 const MIN_CLIENT_PROTOCOL_VERSION = 1;
 const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
@@ -412,6 +412,10 @@ export class BridgeServer {
     const threadId = threadIdFromThreadResult(result);
     if (threadId) {
       this.resumedThreads.add(threadId);
+      await this.registerDesktopThreadIndex(
+        threadId,
+        typeof params.cwd === "string" ? path.basename(params.cwd) : undefined
+      );
     }
     this.sendOk(ws, message.id, result);
   }
@@ -435,6 +439,7 @@ export class BridgeServer {
     const cwd = typeof message.cwd === "string" ? message.cwd : this.threadCwds.get(message.threadId);
     try {
       await this.registerDesktopWorkspace(cwd);
+      await this.registerDesktopThreadIndex(message.threadId, typeof cwd === "string" ? path.basename(cwd) : undefined);
       await this.ensureThreadResumed(message.threadId, message, cwd);
       const input = await this.buildTurnInput(message.prompt, message.attachments, cwd);
       const sandbox = safeSandbox(message.sandbox);
@@ -547,6 +552,7 @@ export class BridgeServer {
     }
 
     const cwd = typeof message.cwd === "string" ? message.cwd : this.threadCwds.get(message.threadId);
+    await this.registerDesktopThreadIndex(message.threadId, typeof cwd === "string" ? path.basename(cwd) : undefined);
     const input = await this.buildTurnInput(message.prompt, message.attachments, cwd);
     const promptBytes = Buffer.byteLength(message.prompt, "utf8");
     await this.recordMobileHandoff({
@@ -730,6 +736,7 @@ export class BridgeServer {
       throw new Error("Codex did not return a subagent thread id.");
     }
     this.rememberThreadCwd(forkResult, cwd);
+    await this.registerDesktopThreadIndex(subagentThreadId, typeof cwd === "string" ? path.basename(cwd) : undefined);
 
     const input = [{ type: "text", text: subagentPrompt(role, message.prompt), text_elements: [] }];
     const turnParams: JsonObject = {
@@ -876,6 +883,7 @@ export class BridgeServer {
     if (thread) {
       this.rememberThreadCwd(asJsonValue({ thread }));
       await this.registerDesktopWorkspace(thread.cwd, typeof thread.cwd === "string" ? path.basename(thread.cwd) : undefined);
+      await this.registerDesktopThreadIndex(thread.id, desktopThreadName(thread), desktopThreadUpdatedAt(thread));
     }
     const history = await this.chatHistoryPage(message.threadId, {
       cursor: undefined,
@@ -1195,6 +1203,7 @@ export class BridgeServer {
       if (thread && typeof thread.id === "string" && typeof thread.cwd === "string") {
         this.threadCwds.set(thread.id, thread.cwd);
         void this.registerDesktopWorkspace(thread.cwd, path.basename(thread.cwd));
+        void this.registerDesktopThreadIndex(thread.id, desktopThreadName(thread), desktopThreadUpdatedAt(thread));
       }
       if (thread && typeof thread.id === "string") {
         this.resumedThreads.add(thread.id);
@@ -1207,6 +1216,10 @@ export class BridgeServer {
       const shouldDrainQueue = threadId !== null && (!turnId || this.activeTurns.get(threadId) === turnId);
       if (threadId && shouldDrainQueue) {
         this.activeTurns.delete(threadId);
+      }
+      if (threadId) {
+        const cwd = this.threadCwds.get(threadId);
+        void this.registerDesktopThreadIndex(threadId, typeof cwd === "string" ? path.basename(cwd) : undefined);
       }
       if (threadId) {
         const authoredTurn = this.takeMobileAuthoredTurn(threadId, turnId ?? undefined);
@@ -1336,6 +1349,40 @@ export class BridgeServer {
       } catch (error) {
         this.logger.warn("desktop.workspace_register_failed", {
           root,
+          message: error instanceof Error ? error.message : String(error)
+        });
+      }
+    };
+    const next = this.desktopWorkspaceSyncTail.then(register, register);
+    this.desktopWorkspaceSyncTail = next.catch(() => undefined);
+    await next;
+  }
+
+  private async registerDesktopThreadIndex(threadId: unknown, threadName?: string, updatedAt?: string | number | Date): Promise<void> {
+    if (!this.desktopWorkspaceSync || typeof threadId !== "string" || threadId.trim() === "") {
+      return;
+    }
+    const register = async () => {
+      try {
+        const result = await registerCodexDesktopThreadIndex(
+          {
+            id: threadId,
+            threadName,
+            updatedAt
+          },
+          {
+            codexHome: this.codexHome,
+            fallbackName: threadName
+          }
+        );
+        if (result.changed) {
+          this.logger.info("desktop.thread_index_registered", {
+            threadId: result.id
+          });
+        }
+      } catch (error) {
+        this.logger.warn("desktop.thread_index_register_failed", {
+          threadId,
           message: error instanceof Error ? error.message : String(error)
         });
       }
@@ -2533,6 +2580,43 @@ function threadIdFromThreadResult(result: JsonValue): string | null {
     return null;
   }
   return typeof result.thread.id === "string" ? result.thread.id : null;
+}
+
+function desktopThreadName(thread: Record<string, unknown>): string | undefined {
+  const explicit =
+    typeof thread.name === "string" && thread.name.trim()
+      ? thread.name
+      : typeof thread.title === "string" && thread.title.trim()
+        ? thread.title
+        : typeof thread.preview === "string" && thread.preview.trim()
+          ? thread.preview
+          : undefined;
+  if (explicit) {
+    return explicit;
+  }
+  return typeof thread.cwd === "string" && thread.cwd ? path.basename(thread.cwd) : undefined;
+}
+
+function desktopThreadUpdatedAt(thread: Record<string, unknown>): string | number | undefined {
+  if (typeof thread.updatedAtMs === "number") {
+    return thread.updatedAtMs;
+  }
+  if (typeof thread.updated_at_ms === "number") {
+    return thread.updated_at_ms;
+  }
+  if (typeof thread.updatedAt === "number") {
+    return thread.updatedAt * 1000;
+  }
+  if (typeof thread.updated_at === "number") {
+    return thread.updated_at * 1000;
+  }
+  if (typeof thread.updatedAt === "string") {
+    return thread.updatedAt;
+  }
+  if (typeof thread.updated_at === "string") {
+    return thread.updated_at;
+  }
+  return undefined;
 }
 
 function firstMapKey(map: Map<string, unknown>): string | undefined {

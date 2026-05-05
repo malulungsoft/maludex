@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.3 - 2026-05-05
+
+- Register mobile-started threads in Codex Desktop's local `session_index.jsonl` so iPhone-created chat rooms can appear after restarting the desktop app.
+- Back the desktop thread index sync with regression tests and keep thread index names short instead of writing prompt bodies into the index.
+
 ## 0.9.2 - 2026-05-05
 
 - Register mobile-created and mobile-selected project paths in Codex Desktop workspace state so iPhone-created projects and their Codex threads are visible in the desktop app.
